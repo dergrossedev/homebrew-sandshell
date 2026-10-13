@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+# Mock `sbx` CLI for the Sandshell test suite.
+#
+# All state lives under $SBX_MOCK_STATE (a per-test temporary directory):
+#   sandboxes/<name>   tab-separated key/value records (agent, workspace, status, mcp)
+#   fs/<name>/...      fake in-sandbox filesystem (the sandbox's "/")
+#   mcp-registry/      <server>.json files backing `sbx mcp ls/inspect`
+#   calls.log          one line per invocation, arguments space-joined
+#
+# `sbx exec ... sh -c '<script>'` replays the real in-sandbox script against
+# the fake filesystem: every /home/agent path is rewritten into fs/<name>/.
+# stdin is forwarded untouched, so tar pipes and config copies behave like the
+# real VM, including the scripts' own exit codes (42/43 refusals included).
+
+set -u
+
+state=${SBX_MOCK_STATE:?SBX_MOCK_STATE is not set}
+sandboxes="$state/sandboxes"
+registry="$state/mcp-registry"
+fs_root="$state/fs"
+launched="$state/launched"
+mkdir -p "$sandboxes" "$registry" "$fs_root" "$launched"
+
+printf '%s\n' "$*" >>"$state/calls.log"
+
+field() { # FILE KEY -> value
+  [ -f "$1" ] || return 1
+  awk -F '\t' -v k="$2" '$1 == k { print substr($0, index($0, "\t") + 1); exit }' "$1"
+}
+
+setfield() { # FILE KEY VALUE
+  local tmp
+  tmp=$(mktemp)
+  if [ -f "$1" ]; then
+    awk -F '\t' -v k="$2" -v v="$3" '
+      $1 == k { print k "\t" v; found = 1; next }
+      { print }
+      END { if (!found) print k "\t" v }
+    ' "$1" >"$tmp"
+    mv "$tmp" "$1"
+  else
+    printf '%s\t%s\n' "$2" "$3" >"$1"
+  fi
+}
+
+skill_store() {
+  case $(uname -s) in
+    Darwin) printf '%s\n' "$HOME/Library/Application Support/com.docker.sandboxes/sandboxes/agent-skills" ;;
+    *) printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/sandboxes/sandboxes/agent-skills" ;;
+  esac
+}
+
+run_sandbox_script() { # NAME SCRIPT [ARGS...]
+  local name=$1 script=$2
+  shift 2
+  local fs="$fs_root/$name"
+  local transformed arg
+  local -a rewritten=()
+  # Rewrite /home/agent in the script AND in every argument: sandshell passes
+  # in-sandbox paths (e.g. the skill target dir) as script arguments, and the
+  # fake filesystem must be the only tree the script can touch.
+  transformed=$(printf '%s' "$script" | sed "s|/home/agent|$fs/home/agent|g")
+  # macOS Bash 3.2 treats an empty array expansion as unbound under `set -u`.
+  if [ "$#" -eq 0 ]; then
+    bash -c "$transformed"
+    return
+  fi
+  for arg in "$@"; do
+    rewritten+=("$(printf '%s' "$arg" | sed "s|/home/agent|$fs/home/agent|g")")
+  done
+  bash -c "$transformed" "${rewritten[@]}"
+}
+
+do_exec() {
+  local name script record
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -i) shift ;;
+      -u) shift 2 ;;
+      -*) shift ;;
+      *) break ;;
+    esac
+  done
+  name=$1
+  shift
+  record="$sandboxes/$name"
+  if [ ! -f "$record" ]; then
+    printf 'mock sbx: no such sandbox: %s\n' "$name" >&2
+    exit 1
+  fi
+  if [ "${1:-}" = "true" ]; then
+    setfield "$record" status running
+    exit 0
+  fi
+  if [ "${1:-}" = "sh" ] && [ "${2:-}" = "-c" ]; then
+    script=$3
+    shift 3
+    run_sandbox_script "$name" "$script" "$@"
+    exit $?
+  fi
+  exit 0
+}
+
+cmd_ls() {
+  local f
+  if [ "${1:-}" = "-q" ]; then
+    for f in "$sandboxes"/*; do
+      [ -f "$f" ] && basename "$f"
+    done
+    return 0
+  fi
+  printf 'NAME\tAGENT\tSTATUS\tWORKSPACE\n'
+  for f in "$sandboxes"/*; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(basename "$f")" "$(field "$f" agent)" "$(field "$f" status)" "$(field "$f" workspace)"
+  done
+}
+
+cmd_create() {
+  local name='' target='' workspace='' arg
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --name) name=$2; shift 2 ;;
+      --cpus|--memory|--pull|--skills|--env-file) shift 2 ;;
+      --clone) shift ;;
+      *)
+        arg=$1
+        shift
+        if [ -z "$target" ]; then target=$arg; else workspace=$arg; fi
+        ;;
+    esac
+  done
+  if [ -z "$name" ] || [ -z "$target" ] || [ -z "$workspace" ]; then
+    printf 'mock sbx: invalid create arguments\n' >&2
+    return 2
+  fi
+  if [ -e "$sandboxes/$name" ]; then
+    printf 'mock sbx: sandbox already exists: %s\n' "$name" >&2
+    return 1
+  fi
+  printf 'agent\t%s\nworkspace\t%s\nstatus\tstopped\n' "$target" "$workspace" >"$sandboxes/$name"
+  mkdir -p "$fs_root/$name"
+}
+
+cmd_run() {
+  local name='' record
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --name) name=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  record="$sandboxes/$name"
+  if [ ! -f "$record" ]; then
+    printf 'mock sbx: no such sandbox: %s\n' "$name" >&2
+    return 1
+  fi
+  setfield "$record" status running
+  # Snapshot the sandbox Vibe config at launch time so tests can prove which
+  # configuration the agent saw when it started.
+  if [ -f "$fs_root/$name/home/agent/.vibe/config.toml" ]; then
+    cp "$fs_root/$name/home/agent/.vibe/config.toml" "$launched/$name.config"
+  else
+    rm -f "$launched/$name.config"
+  fi
+}
+
+cmd_rm() {
+  local name=''
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --force|-f) shift ;;
+      *) name=$1; shift ;;
+    esac
+  done
+  if [ ! -e "$sandboxes/$name" ]; then
+    printf 'mock sbx: no such sandbox: %s\n' "$name" >&2
+    return 1
+  fi
+  # name was validated against an existing sandbox record above.
+  # shellcheck disable=SC2115
+  rm -rf "$sandboxes/$name" "$fs_root/$name"
+}
+
+cmd_stop() {
+  local name=${1:-} record
+  record="$sandboxes/$name"
+  if [ ! -f "$record" ]; then
+    printf 'mock sbx: no such sandbox: %s\n' "$name" >&2
+    return 1
+  fi
+  setfield "$record" status stopped
+}
+
+cmd_mcp() {
+  local sub=${1:-} f server sandbox record
+  shift || true
+  case $sub in
+    ls)
+      for f in "$registry"/*.json; do
+        [ -f "$f" ] && basename "$f" .json
+      done
+      ;;
+    inspect)
+      server=${1:-}
+      if [ ! -f "$registry/$server.json" ]; then
+        printf 'mock sbx: unknown MCP server: %s\n' "$server" >&2
+        return 1
+      fi
+      cat "$registry/$server.json"
+      ;;
+    load)
+      server=''
+      sandbox=''
+      while [ $# -gt 0 ]; do
+        case $1 in
+          --sandbox) sandbox=$2; shift 2 ;;
+          *) server=$1; shift ;;
+        esac
+      done
+      record="$sandboxes/$sandbox"
+      if [ ! -f "$record" ]; then
+        printf 'mock sbx: no such sandbox: %s\n' "$sandbox" >&2
+        return 1
+      fi
+      if [ ! -f "$registry/$server.json" ]; then
+        printf 'mock sbx: unknown MCP server: %s\n' "$server" >&2
+        return 1
+      fi
+      printf 'mcp\t%s\n' "$server" >>"$record"
+      ;;
+    *)
+      printf 'mock sbx: unsupported mcp subcommand: %s\n' "$sub" >&2
+      return 2
+      ;;
+  esac
+}
+
+cmd_skills() {
+  local sub=${1:-} store d
+  shift || true
+  case $sub in
+    ls)
+      store=$(skill_store)
+      for d in "$store"/*/; do
+        [ -d "$d" ] && basename "$d"
+      done
+      ;;
+    *)
+      printf 'mock sbx: unsupported skills subcommand: %s\n' "$sub" >&2
+      return 2
+      ;;
+  esac
+}
+
+cmd=${1:-}
+shift || true
+case $cmd in
+  ls) cmd_ls "$@" ;;
+  create) cmd_create "$@" ;;
+  run) cmd_run "$@" ;;
+  rm) cmd_rm "$@" ;;
+  stop) cmd_stop "$@" ;;
+  exec) do_exec "$@" ;;
+  mcp) cmd_mcp "$@" ;;
+  skills) cmd_skills "$@" ;;
+  *)
+    printf 'mock sbx: unsupported command: %s\n' "$cmd" >&2
+    exit 2
+    ;;
+esac

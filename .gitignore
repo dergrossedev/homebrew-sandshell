@@ -1,0 +1,27 @@
+# Temporary files created by scripts/build.sh next to the artifact.
+.sandshell.sh.*
+
+# Generated release archives and checksums (scripts/package.sh).
+dist/
+
+# OS files.
+.DS_Store
+Thumbs.db
+
+# Editor and IDE files.
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup and patch files.
+*.bak
+*.orig
+*.rej
+
+# Log files.
+*.log
+
+.opencode
+*.env

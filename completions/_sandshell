@@ -1,0 +1,325 @@
+#compdef sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd
+
+# Zsh completion for sandshell (sbxc, sbxr, sbxenv, sbxmcp, sbxskill, sbxwt,
+# sbxcmd).
+#
+# Install by placing this file on $fpath under the name _sandshell (for example
+# in a completion directory) BEFORE the shell's completion initialization
+# (compinit) runs, so compinit discovers it; if compinit already ran, re-run
+# compinit once in the current shell. The file does not initialize completion
+# itself and never creates or modifies sandboxes, directories, configuration,
+# or Git state.
+# Dynamic lookups (sbx, git, the shared skill store, sandshell state files)
+# are read-only and fail silently when unavailable.
+#
+# The whole implementation lives in a single top-level function: zsh autoload
+# executes the body of a file that consists of one function definition on the
+# first call, which defines the nested helpers and dispatches to the command
+# being completed.
+
+_sandshell() {
+  # --- shared helpers ---------------------------------------------------------
+
+  # _sandshell_config_root — sandshell configuration root, mirroring the
+  # runtime precedence (SANDSHELL_CONFIG_HOME, then XDG_CONFIG_HOME/sandshell,
+  # then $HOME/.config/sandshell). Prints nothing when no root can be derived.
+  _sandshell_config_root() {
+    local root=${SANDSHELL_CONFIG_HOME:-}
+    if [ -z "$root" ]; then
+      root=${XDG_CONFIG_HOME:-}
+      if [ -n "$root" ]; then
+        root=$root/sandshell
+      elif [ -n "${HOME:-}" ]; then
+        root=$HOME/.config/sandshell
+      fi
+    fi
+    if [ -n "$root" ]; then
+      printf '%s\n' "$root"
+    fi
+    return 0
+  }
+
+  # _sandshell_skill_store — Docker's shared host-wide skill catalog,
+  # mirroring the runtime path without a uname subprocess. Prints nothing on
+  # other hosts.
+  _sandshell_skill_store() {
+    case ${OSTYPE:-} in
+      darwin*) printf '%s\n' "$HOME/Library/Application Support/com.docker.sandboxes/sandboxes/agent-skills" ;;
+      linux*) printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/sandboxes/sandboxes/agent-skills" ;;
+    esac
+    return 0
+  }
+
+  # --- dynamic candidate generators -------------------------------------------
+  # Each generator adds candidate names with compadd, skipping any names
+  # passed as arguments (already present on the command line). All of them
+  # are read-only and silent on failure. compadd applies the current PREFIX
+  # itself, so no manual prefix filtering is needed.
+
+  # _sandshell_sandboxes [EXCLUDE...] — existing sandbox names.
+  _sandshell_sandboxes() {
+    local -a skip
+    local name
+    skip=("$@")
+    (( $+commands[sbx] )) || return 0
+    for name in ${(f)"$(command sbx ls -q 2>/dev/null)"}; do
+      [ -n "$name" ] || continue
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done
+    return 0
+  }
+
+  # _sandshell_mcp_servers [EXCLUDE...] — registered MCP server names.
+  _sandshell_mcp_servers() {
+    local -a skip
+    local name
+    skip=("$@")
+    (( $+commands[sbx] )) || return 0
+    for name in ${(f)"$(command sbx mcp ls 2>/dev/null)"}; do
+      [ -n "$name" ] || continue
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done
+    return 0
+  }
+
+  # _sandshell_skills_available [EXCLUDE...] — skills in the shared store.
+  _sandshell_skills_available() {
+    local -a skip
+    local store d name
+    skip=("$@")
+    store=$(_sandshell_skill_store)
+    [ -n "$store" ] || return 0
+    for d in "$store"/*(N/); do
+      [ -d "$d" ] || continue
+      [ -L "$d" ] && continue
+      [ -f "$d/SKILL.md" ] || continue
+      name=${d%/}
+      name=${name##*/}
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done
+    return 0
+  }
+
+  # _sandshell_skills_tracked SANDBOX [EXCLUDE...] — skills selected for
+  # SANDBOX.
+  _sandshell_skills_tracked() {
+    local -a skip
+    local sandbox root file name
+    sandbox=${1:-}
+    [[ $sandbox =~ '^[a-zA-Z0-9][a-zA-Z0-9.-]*$' ]] || return 0
+    shift
+    skip=("$@")
+    root=$(_sandshell_config_root)
+    [ -n "$root" ] || return 0
+    file=$root/skills/$sandbox.skills
+    [ -f "$file" ] || return 0
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done <"$file"
+    return 0
+  }
+
+  # _sandshell_managed_sandboxes [EXCLUDE...] — sandboxes with worktree
+  # metadata.
+  _sandshell_managed_sandboxes() {
+    local -a skip
+    local root f name
+    skip=("$@")
+    root=$(_sandshell_config_root)
+    [ -n "$root" ] || return 0
+    for f in "$root"/worktrees/*.meta(N); do
+      name=${f##*/}
+      name=${name%.meta}
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done
+    return 0
+  }
+
+  # _sandshell_branches [EXCLUDE...] — local Git branch names.
+  _sandshell_branches() {
+    local -a skip
+    local name
+    skip=("$@")
+    (( $+commands[git] )) || return 0
+    for name in ${(f)"$(command git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null)"}; do
+      [ -n "$name" ] || continue
+      (( ${skip[(Ie)$name]} )) && continue
+      compadd -- "$name"
+    done
+    return 0
+  }
+
+  # --- per-command completion ---------------------------------------------------
+
+  _sandshell_sbxc() {
+    _arguments \
+      '(-h --help)'{-h,--help}'[show help]' \
+      '(-a --agent)'{-a,--agent}'[agent]:agent:(claude codex opencode vibe claude-ollama opencode-ollama)' \
+      '(-d --dir)'{-d,--dir}'[working directory]:directory:_directories' \
+      '(-s --size)'{-s,--size}'[sandbox size]:size:(micro small medium)' \
+      '(-n --name)'{-n,--name}'[sandbox name]:name:' \
+      '--clone[clone repository into sandbox]' \
+      '--env-file[environment file]:file:_files' \
+      '--model[Ollama model for opencode-ollama]:model:'
+    return 0
+  }
+
+  _sandshell_sbxr() {
+    _arguments \
+      '(-h --help)'{-h,--help}'[show help]' \
+      '--all[list all sandboxes]' \
+      '--env-file[environment file]:file:_files' \
+      '1:sandbox:_sandshell_sandboxes'
+    return 0
+  }
+
+  _sandshell_sbxenv() {
+    _arguments \
+      '(-h --help)'{-h,--help}'[show help]' \
+      '1:editor:_command_names -e'
+    return 0
+  }
+
+  _sandshell_sbxmcp() {
+    if (( CURRENT == 2 )); then
+      _arguments \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '1:subcommand:(ls add copy)'
+      return 0
+    fi
+    case ${words[2]} in
+      ls)
+        (( CURRENT == 3 )) && _sandshell_sandboxes
+        ;;
+      add)
+        if (( CURRENT == 3 )); then
+          _sandshell_sandboxes
+        else
+          _sandshell_mcp_servers ${words[4,CURRENT-1]}
+        fi
+        ;;
+      copy)
+        _sandshell_sandboxes
+        ;;
+    esac
+    return 0
+  }
+
+  _sandshell_sbxskill() {
+    local -a typed
+    if (( CURRENT == 2 )); then
+      _arguments \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '1:subcommand:(available ls add remove sync copy)'
+      return 0
+    fi
+    case ${words[2]} in
+      available)
+        ;;
+      ls|sync)
+        (( CURRENT == 3 )) && _sandshell_sandboxes
+        ;;
+      add|remove)
+        if (( CURRENT == 3 )); then
+          _sandshell_sandboxes
+          return 0
+        fi
+        typed=(${words[4,CURRENT-1]})
+        # --all cannot be combined with skill names.
+        (( ${typed[(Ie)--all]} )) && return 0
+        compadd -- --all
+        if [[ ${words[2]} == add ]]; then
+          _sandshell_skills_available $typed
+        else
+          _sandshell_skills_tracked ${words[3]} $typed
+        fi
+        ;;
+      copy)
+        _sandshell_sandboxes
+        ;;
+    esac
+    return 0
+  }
+
+  _sandshell_sbxwt() {
+    if (( CURRENT == 2 )); then
+      _arguments \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '1:subcommand:(create ls commit merge done)'
+      return 0
+    fi
+    case ${words[2]} in
+      create)
+        case ${words[CURRENT-1]} in
+          -a|--agent)
+            compadd -- claude codex opencode vibe claude-ollama opencode-ollama
+            ;;
+          -s|--size)
+            compadd -- micro small medium
+            ;;
+          --base)
+            _sandshell_branches
+            ;;
+          --env-file)
+            _files
+            ;;
+          *)
+            if [[ $PREFIX == -* ]]; then
+              compadd -- -a --agent -s --size --base --env-file
+            elif (( CURRENT == 3 )); then
+              _sandshell_branches
+            fi
+            ;;
+        esac
+        ;;
+      ls)
+        ;;
+      commit)
+        if (( CURRENT == 3 )); then
+          _sandshell_managed_sandboxes
+        elif [[ ${words[CURRENT-1]} == -m ]]; then
+          return 0
+        elif [[ $PREFIX == -* ]]; then
+          compadd -- -m
+        fi
+        ;;
+      merge)
+        if (( CURRENT == 3 )); then
+          _sandshell_managed_sandboxes
+        elif [[ ${words[CURRENT-1]} == --into ]]; then
+          _sandshell_branches
+        elif [[ $PREFIX == -* ]]; then
+          compadd -- --into
+        fi
+        ;;
+      done)
+        (( CURRENT == 3 )) && _sandshell_managed_sandboxes
+        ;;
+    esac
+    return 0
+  }
+
+  _sandshell_sbxcmd() {
+    compadd -- -h --help
+    return 0
+  }
+
+  # --- dispatch -----------------------------------------------------------------
+
+  case $service in
+    sbxc) _sandshell_sbxc ;;
+    sbxr) _sandshell_sbxr ;;
+    sbxenv) _sandshell_sbxenv ;;
+    sbxmcp) _sandshell_sbxmcp ;;
+    sbxskill) _sandshell_sbxskill ;;
+    sbxwt) _sandshell_sbxwt ;;
+    sbxcmd) _sandshell_sbxcmd ;;
+  esac
+  return 0
+}

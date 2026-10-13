@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Bash and Zsh are available
+        run: |
+          command -v bash
+          bash --version | head -n 1
+          command -v zsh
+          zsh --version
+      - name: Install ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            if [ "$(uname -s)" = "Darwin" ]; then
+              brew install shellcheck
+            else
+              sudo apt-get update
+              sudo apt-get install -y shellcheck
+            fi
+          fi
+          shellcheck --version
+      - name: Run quality checks
+        run: ./scripts/check.sh

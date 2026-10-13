@@ -1,0 +1,66 @@
+# sandshell's bundled Vibe preset.
+#
+# This file is the canonical source of the Vibe configuration sandshell
+# synchronizes into Vibe sandboxes when you have no custom configuration at
+# <config-root>/agents/vibe.toml (by default ~/.config/sandshell/agents/vibe.toml).
+# The build embeds it into sandshell.sh, so the runtime works without this file.
+#
+# To customize Vibe, copy this file to <config-root>/agents/vibe.toml and edit
+# the copy; your file then takes priority over the bundled preset.
+
+# Default model: Mistral Large 4.
+# active_model = "mistral-large-4"
+allowed_models = ["mistral-large-*", "mistral-small-*", "zai-glm-5-*"]
+
+[compaction_model]
+name = "mistral-large-4"
+provider = "mistral"
+
+[tools.web_search]
+permission = "ask"
+timeout = 120
+model = "mistral-small-latest"
+
+[[models]]
+name = "mistral-small-latest"
+provider = "mistral"
+alias = "mistral-small-4"
+display_name = "Mistral Small 4"
+supports_images = true
+temperature = 0.6
+thinking = "off"
+thinking_levels = ["off", "high"]
+max_context_length = 256000
+auto_compact_threshold = 200000
+input_price = 0.15
+cached_input_price = 0.015
+output_price = 0.60
+
+[[models]]
+name = "mistral-large-4"
+provider = "mistral"
+alias = "mistral-large-4"
+display_name = "Mistral Large 4"
+temperature = 0.2
+input_price = 0.68
+output_price = 2.09
+cached_input_price = 0.07
+thinking = "medium"
+supports_images = true
+max_context_length = 1000000
+auto_compact_threshold = 500000
+
+[[models]]
+name = "zai-glm-5-3"
+provider = "mistral"
+alias = "zai-glm-5-3"
+display_name = "Z.ai GLM 5.3"
+temperature = 1.0
+input_price = 1.4
+output_price = 4.4
+cached_input_price = 0.14
+thinking = "high"
+thinking_levels = ["low", "high", "max"]
+supports_images = false
+max_context_length = 1000000
+auto_compact_threshold = 500000
