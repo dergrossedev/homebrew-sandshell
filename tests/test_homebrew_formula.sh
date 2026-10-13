@@ -45,8 +45,8 @@ test_formula_generator_produces_expected_formula() {
   formula=$OUT
   assert_contains "$formula" 'class Sandshell < Formula'
   assert_contains "$formula" "url \"https://github.com/$OWNER/homebrew-sandshell/releases/download/v$VERSION/sandshell-$VERSION.tar.gz\""
-  assert_contains "$formula" "sha256 \"$SHA256\""
   assert_contains "$formula" "version \"$VERSION\""
+  assert_contains "$formula" "sha256 \"$SHA256\""
   assert_contains "$formula" 'license "MIT"'
   assert_contains "$formula" 'libexec.install "sandshell.sh"'
   assert_contains "$formula" 'bash_completion.install "completions/sandshell.bash"'
@@ -68,7 +68,7 @@ test_formula_installs_example_under_pkgshare() {
   # The formula test block verifies the installed example.
   block=$(printf '%s\n' "$OUT" | sed -n '/^  test do$/,/^  end$/p')
   assert_contains "$block" 'pkgshare/"examples/vibe.toml"'
-  assert_contains "$block" ':exist?'
+  assert_contains "$block" 'assert_path_exists'
   # The caveats mention where the example is installed.
   caveats=$(printf '%s\n' "$OUT" | sed -n '/def caveats/,/^  end$/p')
   assert_contains "$caveats" 'share/sandshell/examples/vibe.toml'

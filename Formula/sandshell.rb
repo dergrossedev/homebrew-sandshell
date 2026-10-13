@@ -9,8 +9,8 @@ class Sandshell < Formula
   desc "Small Bash/Zsh helpers for Docker Sandboxes"
   homepage "https://github.com/dergrossedev/homebrew-sandshell"
   url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"
-  sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"
   version "0.1.0"
+  sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"
   license "MIT"
 
   def install
@@ -46,6 +46,6 @@ class Sandshell < Formula
                          "command -v sbxskill && command -v sbxwt && " \
                          "command -v sbxcmd && sbxcmd"
     # The optional Vibe example is installed as a public data asset.
-    assert_predicate pkgshare/"examples/vibe.toml", :exist?
+    assert_path_exists pkgshare/"examples/vibe.toml"
   end
 end
