@@ -20,16 +20,17 @@ jobs:
           bash --version | head -n 1
           command -v zsh
           zsh --version
-      - name: Install ShellCheck
+      - name: Install dependencies
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
             if [ "$(uname -s)" = "Darwin" ]; then
               brew install shellcheck
             else
               sudo apt-get update
-              sudo apt-get install -y shellcheck
+              sudo apt-get install -y zsh shellcheck
             fi
           fi
+          zsh --version
           shellcheck --version
       - name: Run quality checks
         run: ./scripts/check.sh
