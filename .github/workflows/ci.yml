@@ -14,23 +14,23 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - name: Ensure Bash and Zsh are available
-        run: |
-          command -v bash
-          bash --version | head -n 1
-          command -v zsh
-          zsh --version
+
       - name: Install dependencies
         run: |
-          if ! command -v shellcheck >/dev/null 2>&1; then
-            if [ "$(uname -s)" = "Darwin" ]; then
+          if [ "$(uname -s)" = "Darwin" ]; then
+            if ! command -v shellcheck >/dev/null 2>&1; then
               brew install shellcheck
-            else
-              sudo apt-get update
-              sudo apt-get install -y zsh shellcheck
             fi
+          else
+            sudo apt-get update
+            sudo apt-get install -y zsh shellcheck
           fi
+
+      - name: Show shell versions
+        run: |
+          bash --version | head -n 1
           zsh --version
           shellcheck --version
+
       - name: Run quality checks
         run: ./scripts/check.sh
