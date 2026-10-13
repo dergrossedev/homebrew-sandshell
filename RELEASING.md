@@ -13,7 +13,7 @@ Repositories (placeholders until the public owner is known):
 3. Verify the generated artifact is current: `./scripts/build.sh --check`
 4. Perform the real Docker Sandbox smoke tests (below).
 5. Package: `./scripts/package.sh 0.1.0`
-6. Verify the archive and checksum: `tar -tzf dist/sandshell-0.1.0.tar.gz`, then `sha256sum -c dist/sandshell-0.1.0.tar.gz.sha256` (`shasum -a 256 -c` on macOS).
+6. Verify the archive and checksum: `tar -tzf dist/sandshell-0.1.0.tar.gz`, then `(cd dist && sha256sum -c sandshell-0.1.0.tar.gz.sha256)` (`(cd dist && shasum -a 256 -c sandshell-0.1.0.tar.gz.sha256)` on macOS).
 7. Change `CHANGELOG.md` `0.1.0` from `Unreleased` to the actual date, and commit.
 8. Create the annotated tag (human approval required): `git tag -a v0.1.0 -m "sandshell 0.1.0"`
 9. Publish the GitHub release (human approval required) and attach `dist/sandshell-0.1.0.tar.gz` and `dist/sandshell-0.1.0.tar.gz.sha256`.

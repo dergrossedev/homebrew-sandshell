@@ -8,9 +8,13 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 formula_path="$root/Formula/sandshell.rb"
 template_path="$root/packaging/homebrew/Formula/sandshell.rb.in"
 
+# Load helpers to set up test environment
+_helpers_dir=$(cd "$(dirname "$0")" && pwd)
+. "$_helpers_dir/helpers.sh"
+unset _helpers_dir
+
 usage() {
-  printf 'usage: tests/test_homebrew_formula_generated.sh
-'
+  printf 'usage: tests/test_homebrew_formula_generated.sh\n'
 }
 
 if [ $# -ne 0 ]; then
@@ -18,58 +22,71 @@ if [ $# -ne 0 ]; then
   exit 2
 fi
 
-# Ensure the generated formula exists
-if [ ! -f "$formula_path" ]; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb does not exist\n' >&2
-  exit 1
-fi
-
-# Ensure the template exists (source of truth)
-if [ ! -f "$template_path" ]; then
-  printf 'test_homebrew_formula_generated.sh: template missing: %s\n' "$template_path" >&2
-  exit 1
-fi
-
-# Validate the formula is syntactically valid Ruby (basic check)
-if command -v ruby >/dev/null 2>&1; then
-  if ! ruby -c "$formula_path" >/dev/null 2>&1; then
-    printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb is not valid Ruby\n' >&2
-    exit 1
+test_formula_generated_exists() {
+  if [ ! -f "$formula_path" ]; then
+    assert_fail "Formula/sandshell.rb does not exist"
   fi
-else
-  printf 'test_homebrew_formula_generated.sh: ruby not available; skipping Ruby syntax check\n' >&2
-fi
+}
 
-# Ensure placeholders were substituted (no @PLACEHOLDER@ remain)
-if grep -q '@[A-Z_][A-Z_]*@' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb still contains placeholders\n' >&2
-  exit 1
-fi
+test_formula_template_exists() {
+  if [ ! -f "$template_path" ]; then
+    assert_fail "template missing: $template_path"
+  fi
+}
 
-# Ensure required fields are present
-if ! grep -q 'class Sandshell < Formula' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb missing Sandshell class\n' >&2
-  exit 1
-fi
+test_formula_generated_is_valid_ruby() {
+  if command -v ruby >/dev/null 2>&1; then
+    if ! ruby -c "$formula_path" >/dev/null 2>&1; then
+      assert_fail "Formula/sandshell.rb is not valid Ruby"
+    fi
+  else
+    printf '    ruby not available; skipping the optional ruby -c syntax check\n'
+  fi
+}
 
-if ! grep -q 'homepage "https://github.com/dergrossedev/homebrew-sandshell"' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb has incorrect homepage\n' >&2
-  exit 1
-fi
+test_formula_generated_has_no_placeholders() {
+  if grep -q '@[A-Z_][A-Z_]*@' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb still contains placeholders"
+  fi
+}
 
-if ! grep -q 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb has incorrect URL\n' >&2
-  exit 1
-fi
+test_formula_generated_has_sandshell_class() {
+  if ! grep -q 'class Sandshell < Formula' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb missing Sandshell class"
+  fi
+}
 
-if ! grep -q 'sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb has incorrect SHA256\n' >&2
-  exit 1
-fi
+test_formula_generated_has_correct_homepage() {
+  if ! grep -q 'homepage "https://github.com/dergrossedev/homebrew-sandshell"' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb has incorrect homepage"
+  fi
+}
 
-if ! grep -q 'version "0.1.0"' "$formula_path"; then
-  printf 'test_homebrew_formula_generated.sh: Formula/sandshell.rb has incorrect version\n' >&2
-  exit 1
-fi
+test_formula_generated_has_correct_url() {
+  if ! grep -q 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb has incorrect URL"
+  fi
+}
 
-printf 'test_homebrew_formula_generated.sh: PASS: Formula/sandshell.rb exists and is valid\n'
+test_formula_generated_has_correct_sha256() {
+  if ! grep -q 'sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb has incorrect SHA256"
+  fi
+}
+
+test_formula_generated_has_correct_version() {
+  if ! grep -q 'version "0.1.0"' "$formula_path"; then
+    assert_fail "Formula/sandshell.rb has incorrect version"
+  fi
+}
+
+run_tests \
+  test_formula_generated_exists \
+  test_formula_template_exists \
+  test_formula_generated_is_valid_ruby \
+  test_formula_generated_has_no_placeholders \
+  test_formula_generated_has_sandshell_class \
+  test_formula_generated_has_correct_homepage \
+  test_formula_generated_has_correct_url \
+  test_formula_generated_has_correct_sha256 \
+  test_formula_generated_has_correct_version

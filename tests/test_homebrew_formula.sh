@@ -44,7 +44,7 @@ test_formula_generator_produces_expected_formula() {
   assert_rc 0
   formula=$OUT
   assert_contains "$formula" 'class Sandshell < Formula'
-  assert_contains "$formula" "url \"https://github.com/$OWNER/sandshell/releases/download/v$VERSION/sandshell-$VERSION.tar.gz\""
+  assert_contains "$formula" "url \"https://github.com/$OWNER/homebrew-sandshell/releases/download/v$VERSION/sandshell-$VERSION.tar.gz\""
   assert_contains "$formula" "sha256 \"$SHA256\""
   assert_contains "$formula" "version \"$VERSION\""
   assert_contains "$formula" 'license "MIT"'
@@ -140,7 +140,7 @@ test_formula_generator_accepts_valid_edge_inputs() {
   # Hyphens and digits in the owner; a 39-character owner; uppercase hex.
   run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner 'my-org-2' --version 0.2.0 --sha256 "$SHA256"
   assert_rc 0
-  assert_contains "$OUT" 'https://github.com/my-org-2/sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz'
+  assert_contains "$OUT" 'https://github.com/my-org-2/homebrew-sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz'
   owner39=$(printf '%039d' 0 | tr '0' 'a')
   run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner "$owner39" --version "$VERSION" --sha256 "$SHA256"
   assert_rc 0
