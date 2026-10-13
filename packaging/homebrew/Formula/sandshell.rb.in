@@ -7,8 +7,8 @@
 
 class Sandshell < Formula
   desc "Small Bash/Zsh helpers for Docker Sandboxes"
-  homepage "https://github.com/@OWNER@/sandshell"
-  url "https://github.com/@OWNER@/sandshell/releases/download/v@VERSION@/sandshell-@VERSION@.tar.gz"
+  homepage "https://github.com/@OWNER@/homebrew-sandshell"
+  url "https://github.com/@OWNER@/homebrew-sandshell/releases/download/v@VERSION@/sandshell-@VERSION@.tar.gz"
   sha256 "@SHA256@"
   version "@VERSION@"
   license "MIT"

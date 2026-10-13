@@ -12,10 +12,13 @@ sandshell is distributed through Homebrew from a separate public tap repository 
          --owner dergrossedev \
          --version 0.1.0 \
          --sha256 SHA256 \
-         > sandshell.rb
+         > Formula/sandshell.rb
 
-4. Place it in the tap repository at `homebrew-sandshell/Formula/sandshell.rb`.
-5. Validate it: `ruby -c sandshell.rb`, and `brew audit` when Homebrew is available.
+4. Commit the generated `Formula/sandshell.rb` to the tap repository.
+
+When the version or release-archive SHA256 changes, regenerate `Formula/sandshell.rb` using the same command above.
+
+5. Validate it: `ruby -c Formula/sandshell.rb`, and `brew audit` when Homebrew is available.
 
 ## User installation (once the tap is public)
 

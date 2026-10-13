@@ -20,9 +20,11 @@ Repositories (placeholders until the public owner is known):
 10. Generate the Homebrew formula with the published archive checksum:
 
         ./scripts/homebrew-formula.sh --owner dergrossedev --version 0.1.0 --sha256 SHA256 \
-          > sandshell.rb
+          > Formula/sandshell.rb
 
-11. Update `homebrew-sandshell/Formula/sandshell.rb` in the tap repository, validate it (`ruby -c sandshell.rb`, `brew audit` when Homebrew is available), and run an approved install/test/uninstall.
+11. Commit the generated `Formula/sandshell.rb` to the repository. Update `homebrew-sandshell/Formula/sandshell.rb` in the tap repository, validate it (`ruby -c Formula/sandshell.rb`, `brew audit` when Homebrew is available), and run an approved install/test/uninstall.
+
+When the version or release-archive SHA256 changes, regenerate `Formula/sandshell.rb` using the command in step 10.
 12. Publish the tap (human approval required).
 13. Verify installation from the public tap:
 
