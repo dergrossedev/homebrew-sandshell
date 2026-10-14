@@ -10,10 +10,12 @@ _helpers_dir=${0%/*}
 . "$_helpers_dir/helpers.sh"
 unset _helpers_dir
 
-# copy_release_tree DEST — copy the repository tree needed by release.sh into a
-# throwaway directory.
+# copy_release_tree DEST — copy current working-tree inputs into a clean,
+# disposable repository. The explicit file list excludes .git and temp/output
+# directories. Only shell compatibility tests are needed for the fixture's real
+# quality gate; copying release tests would recurse into this suite.
 copy_release_tree() {
-  mkdir -p "$1/scripts" "$1/src" "$1/completions" "$1/examples" "$1/Formula"
+  mkdir -p "$1/scripts" "$1/src" "$1/completions" "$1/examples" "$1/Formula" "$1/tests/mocks"
   cp -r "$SANDSHELL_ROOT"/scripts/*.sh "$1/scripts/"
   chmod +x "$1"/scripts/*.sh
   cp -r "$SANDSHELL_ROOT"/src/*.sh "$1/src/"
@@ -24,11 +26,20 @@ copy_release_tree() {
   cp "$SANDSHELL_ROOT"/README.md "$1/"
   cp "$SANDSHELL_ROOT"/LICENSE "$1/"
   cp "$SANDSHELL_ROOT"/CHANGELOG.md "$1/"
+  cp "$SANDSHELL_ROOT"/.gitignore "$1/"
   cp -r "$SANDSHELL_ROOT"/packaging "$1/"
-  # Create an initial commit so git status is clean
-  git -C "$1" init -q
-  git -C "$1" add .
-  git -C "$1" commit -q -m "Initial commit"
+  cp "$SANDSHELL_ROOT"/tests/helpers.sh "$SANDSHELL_ROOT"/tests/test_shell_compat.sh "$1/tests/"
+  cp "$SANDSHELL_ROOT"/tests/mocks/sbx "$1/tests/mocks/"
+  # Give release tests a dated entry independent of the source changelog.
+  if ! grep -q '^## \[0\.2\.0\] - ' "$1/CHANGELOG.md"; then
+    printf '\n## [0.2.0] - 2026.10.14\n\n- Fixture release.\n' >> "$1/CHANGELOG.md"
+  fi
+  git -C "$1" init -q || assert_fail 'fixture git init failed'
+  git -C "$1" config user.name 'Sandshell Test' || assert_fail 'fixture Git identity failed'
+  git -C "$1" config user.email 'sandshell-test@example.com' || assert_fail 'fixture Git identity failed'
+  git -C "$1" add -A || assert_fail 'fixture git add failed'
+  git -C "$1" commit -q -m "Initial commit" || assert_fail 'fixture baseline commit failed'
+  assert_eq '' "$(git -C "$1" status --porcelain)" 'fixture baseline must be clean'
 }
 
 # touch_file FILE — update file mtime to force stale artifact checks
@@ -42,6 +53,30 @@ touch_file() {
 test_release_script_is_executable() {
   setup_test_env
   [ -x "$SANDSHELL_ROOT/scripts/release.sh" ] || assert_fail 'scripts/release.sh is not executable'
+}
+
+test_release_fixture_is_clean_and_copies_working_tree() {
+  setup_test_env
+  copy_release_tree "$TEST_TMP/source"
+  git -C "$TEST_TMP/source" tag source-only
+  printf '\nUncommitted fixture source change\n' >> "$TEST_TMP/source/README.md"
+  printf '#!/usr/bin/env bash\n# Untracked fixture source file\n' > "$TEST_TMP/source/src/fixture.sh"
+  mkdir -p "$TEST_TMP/source/dist"
+  printf 'generated archive\n' > "$TEST_TMP/source/dist/generated.tar.gz"
+
+  SANDSHELL_ROOT="$TEST_TMP/source"
+  SANDSHELL_SH="$SANDSHELL_ROOT/sandshell.sh"
+  copy_release_tree "$TEST_TMP/repo"
+
+  assert_file_eq "$SANDSHELL_ROOT/README.md" "$TEST_TMP/repo/README.md"
+  assert_file_eq "$SANDSHELL_ROOT/src/fixture.sh" "$TEST_TMP/repo/src/fixture.sh"
+  assert_eq "$TEST_TMP/repo" "$(git -C "$TEST_TMP/repo" rev-parse --show-toplevel)"
+  assert_eq '' "$(git -C "$TEST_TMP/repo" status --porcelain)"
+  assert_eq '1' "$(git -C "$TEST_TMP/repo" rev-list --count HEAD)"
+  assert_eq '' "$(git -C "$TEST_TMP/repo" tag -l)"
+  assert_file_missing "$TEST_TMP/repo/dist"
+  run "$TEST_TMP/repo/scripts/check.sh"
+  assert_rc 0
 }
 
 test_release_rejects_missing_version() {
@@ -92,7 +127,10 @@ test_release_rejects_missing_changelog_entry() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
   # Update CHANGELOG to remove the 0.2.0 entry
-  sed -i.bak '/^\[0\.2\.0\]/d' "$TEST_TMP/repo/CHANGELOG.md" || sed -i '' '/^\[0\.2\.0\]/d' "$TEST_TMP/repo/CHANGELOG.md"
+  sed '/^## \[0\.2\.0\] - /d' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
+  mv "$TEST_TMP/changelog" "$TEST_TMP/repo/CHANGELOG.md"
+  git -C "$TEST_TMP/repo" add -A
+  git -C "$TEST_TMP/repo" commit -q -m 'Remove fixture release entry' || assert_fail 'fixture commit failed'
   run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
   assert_rc 1
   assert_contains "$ERR" 'CHANGELOG.md must contain a release entry'
@@ -101,9 +139,11 @@ test_release_rejects_missing_changelog_entry() {
 test_release_rejects_unreleased_changelog_entry() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  # Change the date to "Unreleased" for 0.2.0
-  sed -i.bak 's/\[0\.2\.0\] - .*/[0.2.0] - Unreleased/' "$TEST_TMP/repo/CHANGELOG.md" || \
-    sed -i '' 's/\[0\.2\.0\] - .*/[0.2.0] - Unreleased/' "$TEST_TMP/repo/CHANGELOG.md"
+  # Keep the notes under Unreleased instead of a versioned release entry.
+  sed 's/^## \[0\.2\.0\] - .*/## [Unreleased]/' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
+  mv "$TEST_TMP/changelog" "$TEST_TMP/repo/CHANGELOG.md"
+  git -C "$TEST_TMP/repo" add -A
+  git -C "$TEST_TMP/repo" commit -q -m 'Mark fixture notes Unreleased' || assert_fail 'fixture commit failed'
   run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
   assert_rc 1
   assert_contains "$ERR" 'CHANGELOG.md must contain a release entry'
@@ -127,10 +167,9 @@ test_release_generates_formula_with_correct_sha() {
   # Formula should be generated
   assert_file_exists "$TEST_TMP/repo/Formula/sandshell.rb"
   # Verify formula contains the correct version and owner
-  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'owner: dergrossedev'
-  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'version: 0.2.0'
+  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'homepage "https://github.com/dergrossedev/homebrew-sandshell"'
   # Verify formula references the correct download URL
-  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz'
+  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz"'
   # Verify formula does NOT contain explicit Ruby version declaration
   assert_not_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'version '"'"'ruby'"'"''
 }
@@ -142,7 +181,7 @@ test_release_formula_receives_package_sha() {
   assert_rc 0
   formula_content=$(cat "$TEST_TMP/repo/Formula/sandshell.rb")
   package_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-0.2.0.tar.gz.sha256")
-  assert_contains "$formula_content" "sha256: $package_sha"
+  assert_contains "$formula_content" "sha256 \"$package_sha\""
 }
 
 test_release_sha_consistency_guard() {
@@ -164,6 +203,8 @@ test_release_fails_on_quality_gate() {
   copy_release_tree "$TEST_TMP/repo"
   # Make sandshell.sh stale to fail the quality gate
   echo "# stale" >> "$TEST_TMP/repo/src/core.sh"
+  git -C "$TEST_TMP/repo" add -A
+  git -C "$TEST_TMP/repo" commit -q -m 'Make fixture artifact stale' || assert_fail 'fixture commit failed'
   run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
   assert_rc 1
   assert_contains "$ERR" 'quality gate failed'
@@ -183,6 +224,7 @@ test_release_outputs_compact_summary() {
 
 run_tests \
   test_release_script_is_executable \
+  test_release_fixture_is_clean_and_copies_working_tree \
   test_release_rejects_missing_version \
   test_release_rejects_extra_arguments \
   test_release_rejects_leading_v \

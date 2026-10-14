@@ -31,6 +31,22 @@ require_zsh() {
   return 0
 }
 
+# Keep the real Zsh completion initializer, but give it a disposable function
+# path. `zsh -f` still sees installed/site completions and inherited FPATH.
+_sandshell_setup_release_zsh_functions() {
+  local core_dir
+  core_dir=$("$ZSH_BIN" -f -c '
+    autoload -Uz compinit
+    autoload +X compinit || exit
+    print -r -- "${functions_source[compinit]:h}"
+  ') || assert_fail 'could not locate Zsh compinit'
+  mkdir -p "$TEST_TMP/zsh-functions"
+  cp "$core_dir/compinit" "$core_dir/compaudit" \
+    "$core_dir/compdump" "$core_dir/compinstall" "$TEST_TMP/zsh-functions/" \
+    || assert_fail 'could not copy Zsh completion initializers'
+  export ZDOTDIR="$HOME"
+}
+
 # package_release_tree DEST — package a throwaway copy of the repository tree
 # and extract the release archive under DEST/extract. Sets RELEASE_DIR to the
 # extracted sandshell-0.1.0 directory. The real working tree and its real
@@ -66,10 +82,12 @@ test_release_archive_contains_completion_assets() {
 test_release_zsh_completion_discovers_all_commands() {
   require_zsh || return 0
   setup_test_env
+  _sandshell_setup_release_zsh_functions
   package_release_tree "$TEST_TMP/repo" || assert_fail 'packaging the throwaway tree failed'
   # The documented flow: source the extracted runtime, add the extracted
   # completions directory to $fpath BEFORE compinit, then initialize.
   run "$ZSH_BIN" -f -c '
+    fpath=("$TEST_TMP/zsh-functions")
     fpath=("$1/completions" $fpath)
     autoload -U compinit
     compinit -i -D
@@ -90,11 +108,13 @@ test_release_zsh_completion_discovers_all_commands() {
 test_release_zsh_fpath_after_compinit_is_not_discovered() {
   require_zsh || return 0
   setup_test_env
+  _sandshell_setup_release_zsh_functions
   package_release_tree "$TEST_TMP/repo" || assert_fail 'packaging the throwaway tree failed'
   # Characterization of the release bug: compinit scans $fpath only when it
   # runs, so a directory added afterwards is never discovered. This is why
   # the README must document the ordering and the re-run remedy.
   run "$ZSH_BIN" -f -c '
+    fpath=("$TEST_TMP/zsh-functions")
     autoload -U compinit
     compinit -i -D
     fpath=("$1/completions" $fpath)
@@ -108,10 +128,12 @@ test_release_zsh_fpath_after_compinit_is_not_discovered() {
 test_release_zsh_compinit_rerun_makes_completion_visible() {
   require_zsh || return 0
   setup_test_env
+  _sandshell_setup_release_zsh_functions
   package_release_tree "$TEST_TMP/repo" || assert_fail 'packaging the throwaway tree failed'
   # The documented remedy when completion was already initialized before the
   # completions directory was added: re-run compinit once in the current shell.
   run "$ZSH_BIN" -f -c '
+    fpath=("$TEST_TMP/zsh-functions")
     autoload -U compinit
     compinit -i -D
     fpath=("$1/completions" $fpath)
@@ -123,6 +145,37 @@ test_release_zsh_compinit_rerun_makes_completion_visible() {
   assert_rc 0
   assert_contains "$OUT" 'sbxc=_sandshell'
   assert_contains "$OUT" 'sbxr=_sandshell'
+}
+
+test_release_zsh_ignores_installed_completion() {
+  require_zsh || return 0
+  setup_test_env
+  _sandshell_setup_release_zsh_functions
+  package_release_tree "$TEST_TMP/repo" || assert_fail 'packaging the throwaway tree failed'
+  mkdir -p "$TEST_TMP/site-functions"
+  printf '#compdef sbxc sbxr\nreturn 99\n' > "$TEST_TMP/site-functions/_sandshell"
+  # Simulate a Homebrew-installed completion without touching host directories.
+  local installed_fpath
+  installed_fpath=$("$ZSH_BIN" -f -c 'print -r -- "${(j.:.)fpath}"')
+  run env FPATH="$TEST_TMP/site-functions:$installed_fpath" "$ZSH_BIN" -f -c '
+    fpath=("$TEST_TMP/zsh-functions")
+    autoload -U compinit
+    compinit -i -D
+    printf "before=%s\n" "${_comps[sbxc]:-none}"
+    fpath=("$1/completions" $fpath)
+    . "$1/sandshell.sh"
+    printf "added=%s\n" "${_comps[sbxc]:-none}"
+    compinit -i -D
+    printf "after=%s\n" "${_comps[sbxc]:-none}"
+    autoload +X _sandshell || exit
+    printf "source=%s\n" "${functions_source[_sandshell]}"
+  ' _ "$RELEASE_DIR"
+  assert_rc 0
+  assert_eq '' "$ERR"
+  assert_eq "before=none
+added=none
+after=_sandshell
+source=$RELEASE_DIR/completions/_sandshell" "$OUT"
 }
 
 # --- Bash ---------------------------------------------------------------------------
@@ -181,5 +234,6 @@ run_tests \
   test_release_zsh_completion_discovers_all_commands \
   test_release_zsh_fpath_after_compinit_is_not_discovered \
   test_release_zsh_compinit_rerun_makes_completion_visible \
+  test_release_zsh_ignores_installed_completion \
   test_release_bash_completion_from_extracted_archive \
   test_release_readme_documents_completion_installation
