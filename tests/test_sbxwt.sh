@@ -153,7 +153,7 @@ test_sbxwt_create_creates_worktree_and_sandbox() {
   setup_test_env
   wt_repo
   wt_create feature
-  assert_match '^sbx-myrepo-feature-claude-[0-9a-f]{8}$' "$SANDBOX"
+  assert_match '^sbx-myrepo-feature-opencode-[0-9a-f]{8}$' "$SANDBOX"
   assert_eq "$REPO.worktrees/feature" "$WT"
   # git worktree add also prints a "HEAD is now at ..." line to stdout; the
   # sandshell summary lines are what we pin down.
@@ -167,7 +167,7 @@ test_sbxwt_create_creates_worktree_and_sandbox() {
   # The sandbox was created through sbxc with the expected arguments.
   assert_contains "$(mock_calls)" "create --name $SANDBOX"
   assert_contains "$(mock_calls)" '--cpus 2 --memory 2g'
-  assert_contains "$(mock_calls)" " claude $WT"
+  assert_contains "$(mock_calls)" " opencode $WT"
   assert_eq 'stopped' "$(mock_sandbox_status "$SANDBOX")"
   # Metadata records repository/worktree/branch/base_branch, mode 0600.
   printf 'repository\t%s\nworktree\t%s\nbranch\tfeature\nbase_branch\tmain\n' \
@@ -195,7 +195,7 @@ test_sbxwt_create_slugifies_branch_names() {
   wt_repo
   wt_create feature/nested
   assert_eq "$REPO.worktrees/feature-nested" "$WT"
-  assert_match '^sbx-myrepo-feature-nested-claude-[0-9a-f]{8}$' "$SANDBOX"
+  assert_match '^sbx-myrepo-feature-nested-opencode-[0-9a-f]{8}$' "$SANDBOX"
   assert_eq 'feature/nested' "$(git -C "$WT" branch --show-current)"
 }
 
@@ -206,7 +206,7 @@ test_sbxwt_create_from_subdirectory() {
   cd "$REPO/sub" || exit 1
   wt_create feature
   assert_eq "$REPO.worktrees/feature" "$WT"
-  assert_match '^sbx-myrepo-feature-claude-[0-9a-f]{8}$' "$SANDBOX"
+  assert_match '^sbx-myrepo-feature-opencode-[0-9a-f]{8}$' "$SANDBOX"
 }
 
 test_sbxwt_create_uses_default_project_env() {
