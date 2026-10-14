@@ -186,6 +186,153 @@ test_sbxr_reports_when_no_sandboxes() {
   assert_eq 'No sandboxes for the current workspace/repository (use sbxr --all to see all).' "$OUT"
 }
 
+# Exercise public listing output, including the original header and rows.
+assert_sbxr_listing_from() {
+  cd "$1" || exit 1
+  run sbxr
+  assert_rc 0
+  assert_eq "$2" "$OUT" "listing from $1"
+}
+
+check_sbxr_path_shape() {
+  setup_test_env
+  local shape=$1 workspace repository worktree expected unrelated
+  workspace="$TEST_TMP/ws/$shape"
+  unrelated="$TEST_TMP/unrelated/$shape"
+  mkdir -p "$workspace" "$unrelated" "${workspace}-other"
+  make_sandbox sbx-a-workspace claude stopped "$workspace"
+  expected=$(sbx ls)
+  make_sandbox sbx-same-basename codex running "$unrelated"
+  make_sandbox sbx-prefix codex running "${workspace}-other"
+  assert_sbxr_listing_from "$workspace" "$expected"
+  run sbxr --all
+  assert_rc 0
+  assert_eq "$(sbx ls)" "$OUT" '--all must preserve native output'
+
+  # Reuse the same sandbox names so the non-Git rows do not enter this listing.
+  repository="$TEST_TMP/repos/$shape"
+  worktree="$TEST_TMP/trees/$shape"
+  make_git_repo "$repository"
+  git -C "$repository" worktree add -b feature "$worktree" >/dev/null 2>&1 || exit 1
+  mkdir -p "$repository/sub/dir" "$worktree/sub/dir"
+  make_sandbox sbx-a-workspace claude stopped "$repository"
+  make_sandbox sbx-b-feature codex running "$worktree"
+  expected=$(sbx ls | grep -v -e '^sbx-same-basename' -e '^sbx-prefix')
+  assert_sbxr_listing_from "$repository" "$expected"
+  assert_sbxr_listing_from "$repository/sub/dir" "$expected"
+  assert_sbxr_listing_from "$worktree" "$expected"
+  assert_sbxr_listing_from "$worktree/sub/dir" "$expected"
+  run sbxr --all
+  assert_rc 0
+  assert_eq "$(sbx ls)" "$OUT" '--all must preserve native output'
+}
+
+test_sbxr_hyphen_paths() { check_sbxr_path_shape 'my-project'; }
+test_sbxr_dotted_paths() { check_sbxr_path_shape 'project.with.dots'; }
+test_sbxr_plus_paths() { check_sbxr_path_shape 'project+api'; }
+test_sbxr_bracket_paths() { check_sbxr_path_shape 'project [test]'; }
+test_sbxr_space_paths() { check_sbxr_path_shape 'project with spaces'; }
+
+test_sbxr_workspace_symlink_spellings() {
+  setup_test_env
+  local workspace alias expected
+  workspace="$TEST_TMP/ws/project with spaces"
+  alias="$TEST_TMP/project [alias]"
+  mkdir -p "$workspace"
+  ln -s "$workspace" "$alias"
+  make_sandbox sbx-alias claude stopped "$alias"
+  expected=$(sbx ls)
+  assert_sbxr_listing_from "$workspace" "$expected"
+  assert_sbxr_listing_from "$alias" "$expected"
+  make_sandbox sbx-physical codex running "$workspace"
+  expected=$(sbx ls)
+  assert_sbxr_listing_from "$workspace" "$expected"
+  assert_sbxr_listing_from "$alias" "$expected"
+}
+
+test_sbxr_workspace_trailing_slashes() {
+  setup_test_env
+  local workspace expected
+  workspace="$TEST_TMP/ws/my-project"
+  mkdir -p "$workspace"
+  make_sandbox sbx-slash claude stopped "$workspace/"
+  make_sandbox sbx-slashes codex running "$workspace///"
+  expected=$(sbx ls)
+  assert_sbxr_listing_from "$workspace" "$expected"
+}
+
+test_sbxr_repository_symlink_spellings() {
+  setup_test_env
+  local repository worktree alias expected
+  mkdir -p "$TEST_TMP/repos"
+  alias="$TEST_TMP/repos [alias]"
+  ln -s "$TEST_TMP/repos" "$alias"
+  repository="$TEST_TMP/repos/my-project"
+  worktree="$TEST_TMP/repos/linked tree"
+  make_git_repo "$alias/my-project"
+  git -C "$alias/my-project" worktree add -b feature "$alias/linked tree" >/dev/null 2>&1 || exit 1
+  mkdir -p "$repository/sub/dir" "$worktree/sub/dir"
+  make_sandbox sbx-a-root claude stopped "$alias/my-project"
+  make_sandbox sbx-b-feature codex running "$alias/linked tree"
+  expected=$(sbx ls)
+  make_sandbox sbx-unrelated claude stopped "$TEST_TMP/unrelated/my-project"
+  assert_sbxr_listing_from "$repository" "$expected"
+  assert_sbxr_listing_from "$repository/sub/dir" "$expected"
+  assert_sbxr_listing_from "$alias/my-project/sub/dir" "$expected"
+  assert_sbxr_listing_from "$worktree" "$expected"
+  assert_sbxr_listing_from "$alias/linked tree/sub/dir" "$expected"
+}
+
+test_sbxr_repository_trailing_slashes() {
+  setup_test_env
+  local repository worktree expected
+  repository="$TEST_TMP/repos/my-project"
+  worktree="$TEST_TMP/trees/linked tree"
+  make_git_repo "$repository"
+  git -C "$repository" worktree add -b feature "$worktree" >/dev/null 2>&1 || exit 1
+  mkdir -p "$repository/sub/dir"
+  make_sandbox sbx-a-root claude stopped "$repository/"
+  make_sandbox sbx-b-feature codex running "$worktree///"
+  expected=$(sbx ls)
+  assert_sbxr_listing_from "$repository" "$expected"
+  assert_sbxr_listing_from "$repository/sub/dir" "$expected"
+  assert_sbxr_listing_from "$worktree" "$expected"
+}
+
+test_sbxr_unavailable_worktree_keeps_literal_matching() {
+  setup_test_env
+  local repository worktree expected
+  repository="$TEST_TMP/repos/my-project"
+  worktree="$TEST_TMP/trees/linked  tree "
+  make_git_repo "$repository"
+  git -C "$repository" worktree add -b feature "$worktree" >/dev/null 2>&1 || exit 1
+  make_sandbox sbx-root claude stopped "$repository"
+  make_sandbox sbx-unavailable codex stopped "$worktree"
+  expected=$(sbx ls)
+  mv "$worktree" "$TEST_TMP/moved-worktree"
+  assert_sbxr_listing_from "$repository" "$expected"
+}
+
+test_sbxr_macos_var_spellings() {
+  setup_test_env
+  if [ "$(uname -s)" != Darwin ] || [ "$(cd /var && pwd -P)" != /private/var ]; then
+    printf '    SKIP: /var -> /private/var equivalence unavailable\n'
+    return 0
+  fi
+  local physical alias expected
+  physical=$(mktemp -d /var/tmp/sandshell-sbxr.XXXXXX) || exit 1
+  physical=$(cd "$physical" && pwd -P) || exit 1
+  # Capture this generated path before the local variable leaves scope.
+  # shellcheck disable=SC2064
+  trap "rm -rf -- '$physical'" EXIT
+  alias=${physical#/private}
+  make_sandbox sbx-var claude stopped "$alias"
+  make_sandbox sbx-private codex running "/private$alias/"
+  expected=$(sbx ls)
+  assert_sbxr_listing_from "$alias" "$expected"
+  assert_sbxr_listing_from "/private$alias" "$expected"
+}
+
 # --- Vibe config lifecycle on resume -----------------------------------------
 
 test_sbxr_vibe_resume_syncs_updated_config_before_launch() {
@@ -553,6 +700,17 @@ run_tests \
   test_sbxr_lists_sandboxes_for_current_workspace \
   test_sbxr_lists_repository_worktree_sandboxes \
   test_sbxr_reports_when_no_sandboxes \
+  test_sbxr_hyphen_paths \
+  test_sbxr_dotted_paths \
+  test_sbxr_plus_paths \
+  test_sbxr_bracket_paths \
+  test_sbxr_space_paths \
+  test_sbxr_workspace_symlink_spellings \
+  test_sbxr_workspace_trailing_slashes \
+  test_sbxr_repository_symlink_spellings \
+  test_sbxr_repository_trailing_slashes \
+  test_sbxr_unavailable_worktree_keeps_literal_matching \
+  test_sbxr_macos_var_spellings \
   test_sbxr_vibe_resume_syncs_updated_config_before_launch \
   test_sbxr_vibe_resume_applies_project_env_file \
   test_sbxr_vibe_resume_syncs_bundled_preset_without_host_config \

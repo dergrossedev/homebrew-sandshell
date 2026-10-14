@@ -39,6 +39,12 @@ _sbx_config_dir() {
   printf '%s\n' "$root"
 }
 
+# _sandshell_physical_path — resolve a directory, retaining its spelling when
+# unavailable (for example, a registered worktree that is currently missing).
+_sandshell_physical_path() {
+  (cd -P -- "$1" && pwd -P) 2>/dev/null || printf '%s\n' "$1"
+}
+
 # _sbx_project_name — normalize a workspace path to a project name.
 _sbx_project_name() {
   local name=${1##*/}
@@ -80,15 +86,23 @@ _sbx_confirm() {
 
 # _sbx_workspace_rows — print `sbx ls` rows whose WORKSPACE column matches.
 _sbx_workspace_rows() {
-  local workspace=$1 listing line
+  local workspace listing line row_workspace column
+  workspace=$(_sandshell_physical_path "$1") || return
   if (( $# == 2 )); then
     listing=$2
   else
     listing=$(sbx ls) || return
   fi
   while IFS= read -r line; do
-    # The WORKSPACE column is last; match the whole path, not a substring.
-    [[ $line == *[[:space:]]"$workspace" ]] && printf '%s\n' "$line"
+    # The first three columns are single fields; WORKSPACE is the remainder,
+    # including spaces. Keep the original row for display.
+    row_workspace=$line
+    for (( column=0; column<3; column++ )); do
+      row_workspace=${row_workspace#*[[:space:]]}
+      row_workspace=${row_workspace#"${row_workspace%%[![:space:]]*}"}
+    done
+    [[ -n $row_workspace ]] || continue
+    [[ $(_sandshell_physical_path "$row_workspace") == "$workspace" ]] && printf '%s\n' "$line"
   done <<< "$listing"
   return 0
 }
@@ -102,10 +116,9 @@ _sbx_sandbox_uses_workspace() {
     listing=$(sbx ls) || return
   fi
   while IFS= read -r line; do
-    [[ $line == *[[:space:]]"$workspace" ]] || continue
     first=${line%%[[:space:]]*}
     [[ $first == "$name" ]] && return 0
-  done <<< "$listing"
+  done < <(_sbx_workspace_rows "$workspace" "$listing")
   return 1
 }
 
@@ -561,7 +574,10 @@ sbxr() {
     if command -v git >/dev/null 2>&1 && git -C "$workspace" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       while IFS=$'\t' read -r wt_path branch; do
         match=$(_sbx_workspace_rows "$wt_path" "$listing") || return
-        [[ -n $match ]] && rows+="${rows:+$'\n'}$match"
+        if [[ -n $match ]]; then
+          [[ -n $rows ]] && rows+=$'\n'
+          rows+=$match
+        fi
       done < <(_sbx_git_worktrees "$workspace")
     else
       rows=$(_sbx_workspace_rows "$workspace" "$listing") || return

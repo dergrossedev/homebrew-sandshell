@@ -32,6 +32,12 @@ _sbx_config_dir() {
   printf '%s\n' "$root"
 }
 
+# _sandshell_physical_path — resolve a directory, retaining its spelling when
+# unavailable (for example, a registered worktree that is currently missing).
+_sandshell_physical_path() {
+  (cd -P -- "$1" && pwd -P) 2>/dev/null || printf '%s\n' "$1"
+}
+
 # _sbx_project_name — normalize a workspace path to a project name.
 _sbx_project_name() {
   local name=${1##*/}
