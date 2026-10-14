@@ -3,9 +3,9 @@
 Future releases use YYYY.M.PATCH calendar versions, for example
 2026.10.0 or 2026.10.1.
 
-1. Update `CHANGELOG.md` with a dated entry for `VERSION`, documenting compatibility and breaking changes.
+1. Update `CHANGELOG.md` and commit it.
 2. Run `./scripts/release.sh VERSION`.
-3. Review and commit the generated changes on `main`.
+3. Review and commit the generated release changes.
 4. Push and wait for CI to pass.
 5. Run `./scripts/publish.sh VERSION`.
 6. Verify the Homebrew release:

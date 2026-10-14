@@ -18,3 +18,11 @@
 - Interactive confirmation before host-changing operations (a second sandbox on the same workspace, staging all changes, merging, removing a sandbox/worktree, attaching local/stdio MCP servers that run host commands).
 - Never deletes Git branches automatically; `sbxwt done` preserves the branch and cleans up the sandbox, worktree, and sandshell tracking state.
 - Env files are passed to `sbx` as env files, never sourced; prefer `sbx secret` for secrets.
+
+## [2026.10.0] - 2026-10-14
+
+- OpenCode is now the default agent for `sbxc` and `sbxwt create`
+- `sbxenv` now respects editor preference: explicit argument → `VISUAL` → `EDITOR` → micro → nano → vim → vi
+- `sbxr` now matches canonical workspace paths, including aliases, trailing slashes, and macOS `/var`/`/private/var` paths
+- Homebrew installation and formula support are now available and validated
+- Future releases use `YYYY.M.PATCH` calendar versions
