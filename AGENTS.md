@@ -2,7 +2,7 @@
 
 ## Purpose
 
-sandshell is a small Bash/Zsh helper library for developer sandbox workflows. The backend is Docker Sandboxes (`sbx`); do not add backend abstractions without a concrete implementation task. The existing CLI behavior in `sandshell.sh` is the baseline — preserve it unless the active task explicitly changes it.
+sandshell is a small Bash/Zsh helper library for developer and agent sandbox workflows. The backend is Docker Sandboxes (`sbx`); do not add backend abstractions without a concrete implementation task. The existing CLI behavior in `sandshell.sh` is the baseline — preserve it unless the active task explicitly changes it.
 
 ## Engineering principles
 
