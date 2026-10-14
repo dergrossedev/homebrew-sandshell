@@ -8,13 +8,10 @@ Future releases use YYYY.M.PATCH calendar versions, for example
 3. Review and commit the generated release changes.
 4. Push and wait for CI to pass.
 5. Run `./scripts/publish.sh VERSION`.
-6. Verify the Homebrew release:
+6. Run `./scripts/verify-release.sh VERSION`.
 
-       brew update
-       brew audit --strict dergrossedev/sandshell/sandshell
-       brew install dergrossedev/sandshell/sandshell
-
-   For an existing installation, use `brew upgrade sandshell`.
+Verification requires Homebrew and Zsh and intentionally updates the local
+Homebrew installation. It does not require Docker Sandboxes.
 
 `dist/` is git-ignored; never commit release archives. If publishing fails, follow the printed recovery command. Do not move existing tags or overwrite releases, including `v0.1.0`.
 
