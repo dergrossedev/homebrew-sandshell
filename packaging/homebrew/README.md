@@ -1,6 +1,6 @@
 # Homebrew packaging for sandshell
 
-sandshell is distributed through Homebrew from a separate public tap repository named `homebrew-sandshell`; the main repository only carries the formula template (`Formula/sandshell.rb.in`). Nothing is published yet — see [RELEASING.md](../../RELEASING.md) for the full release checklist.
+sandshell is distributed through the published `dergrossedev/sandshell` tap in this repository. The formula is generated from `packaging/homebrew/Formula/sandshell.rb.in`; see [RELEASING.md](../../RELEASING.md) for the release checklist.
 
 ## Release flow
 
@@ -14,17 +14,15 @@ sandshell is distributed through Homebrew from a separate public tap repository 
          --sha256 SHA256 \
          > Formula/sandshell.rb
 
-4. Commit the generated `Formula/sandshell.rb` to the tap repository.
+4. Commit the generated `Formula/sandshell.rb` to this repository.
 
 When the version or release-archive SHA256 changes, regenerate `Formula/sandshell.rb` using the same command above.
 
 5. Validate it: `ruby -c Formula/sandshell.rb`, and `brew audit` when Homebrew is available.
 
-## User installation (once the tap is public)
+## User installation
 
-A GitHub repository named `dergrossedev/homebrew-sandshell` maps to the formula `dergrossedev/sandshell`, so users install with:
-
-    brew install dergrossedev/sandshell
+See [README.md](../../README.md#install) for installation and shell setup.
 
 The formula installs the generated `sandshell.sh` under `libexec/`, the Bash and Zsh completions into the standard completion directories, and `examples/vibe.toml` under `share/sandshell/examples/`; its caveats show the single `source` line to add to the shell configuration. It declares no dependencies.
 
