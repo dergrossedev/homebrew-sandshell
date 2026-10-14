@@ -4,13 +4,13 @@ sandshell is distributed through Homebrew from a separate public tap repository 
 
 ## Release flow
 
-1. Build the release archive: `./scripts/package.sh 0.1.0` (produces `dist/sandshell-0.1.0.tar.gz` and its `.sha256`).
-2. Publish the GitHub release with the archive attached (human approval required).
+1. Build the release archive: `./scripts/package.sh 2026.10.0` (produces `dist/sandshell-2026.10.0.tar.gz` and its `.sha256`).
+2. Publish the GitHub release with the archive attached.
 3. Generate the formula with the real owner, version, and archive checksum:
 
        ./scripts/homebrew-formula.sh \
          --owner dergrossedev \
-         --version 0.1.0 \
+         --version 2026.10.0 \
          --sha256 SHA256 \
          > Formula/sandshell.rb
 

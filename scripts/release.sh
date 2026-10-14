@@ -30,7 +30,7 @@ cd "$root"
 
 usage() {
   printf 'usage: scripts/release.sh VERSION\n'
-  printf '  VERSION  stable semantic version X.Y.Z, e.g. 0.2.0\n'
+  printf '  VERSION  calendar version YYYY.M.PATCH, e.g. 2026.10.0\n'
 }
 
 if [ $# -ne 1 ]; then
@@ -47,10 +47,10 @@ if [[ $version == v* ]]; then
   exit 2
 fi
 
-# Validate semantic version format X.Y.Z
-version_re='^0\.[0-9]+\.[0-9]+$'
+# Validate calendar syntax without consulting the current date.
+version_re='^[0-9]{4}\.(1[0-2]|[1-9])\.(0|[1-9][0-9]*)$'
 if ! [[ $version =~ $version_re ]]; then
-  printf 'release.sh: invalid version: %s (expected a stable version like 0.2.0)\n' "$version" >&2
+  printf 'release.sh: invalid version: %s (expected YYYY.M.PATCH)\n' "$version" >&2
   usage >&2
   exit 2
 fi

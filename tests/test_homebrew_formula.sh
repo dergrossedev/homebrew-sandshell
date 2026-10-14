@@ -123,7 +123,7 @@ test_formula_generator_rejects_invalid_input() {
   long_owner=$(printf '%040d' 0 | tr '0' 'a')
   run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner "$long_owner" --version "$VERSION" --sha256 "$SHA256"
   assert_rc 2
-  for version in '1.0.0' '0.1' 'v0.1.0' 'abc' '0.1.0.1'; do
+  for version in '0.1' 'v0.1.0' 'abc' '0.1.0.1'; do
     run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner "$OWNER" --version "$version" --sha256 "$SHA256"
     assert_rc 2 "version [$version] must be rejected"
   done
@@ -138,9 +138,12 @@ test_formula_generator_rejects_invalid_input() {
 test_formula_generator_accepts_valid_edge_inputs() {
   setup_test_env
   # Hyphens and digits in the owner; a 39-character owner; uppercase hex.
-  run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner 'my-org-2' --version 0.2.0 --sha256 "$SHA256"
-  assert_rc 0
-  assert_contains "$OUT" 'https://github.com/my-org-2/homebrew-sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz'
+  for version in 1.0.0 2026.10.0; do
+    run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner 'my-org-2' --version "$version" --sha256 "$SHA256"
+    assert_rc 0
+    assert_contains "$OUT" "https://github.com/my-org-2/homebrew-sandshell/releases/download/v$version/sandshell-$version.tar.gz"
+    assert_not_contains "$OUT" 'version "'
+  done
   owner39=$(printf '%039d' 0 | tr '0' 'a')
   run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" --owner "$owner39" --version "$VERSION" --sha256 "$SHA256"
   assert_rc 0

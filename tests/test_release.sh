@@ -31,8 +31,8 @@ copy_release_tree() {
   cp "$SANDSHELL_ROOT"/tests/helpers.sh "$SANDSHELL_ROOT"/tests/test_shell_compat.sh "$1/tests/"
   cp "$SANDSHELL_ROOT"/tests/mocks/sbx "$1/tests/mocks/"
   # Give release tests a dated entry independent of the source changelog.
-  if ! grep -q '^## \[0\.2\.0\] - ' "$1/CHANGELOG.md"; then
-    printf '\n## [0.2.0] - 2026.10.14\n\n- Fixture release.\n' >> "$1/CHANGELOG.md"
+  if ! grep -q '^## \[2099\.12\.0\] - ' "$1/CHANGELOG.md"; then
+    printf '\n## [2099.12.0] - 2099.12.01\n\n- Fixture release.\n' >> "$1/CHANGELOG.md"
   fi
   git -C "$1" init -q || assert_fail 'fixture git init failed'
   git -C "$1" config user.name 'Sandshell Test' || assert_fail 'fixture Git identity failed'
@@ -90,7 +90,7 @@ test_release_rejects_missing_version() {
 test_release_rejects_extra_arguments() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0 extra
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0 extra
   assert_rc 2
   assert_contains "$ERR" 'usage:'
 }
@@ -98,7 +98,7 @@ test_release_rejects_extra_arguments() {
 test_release_rejects_leading_v() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" v0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" v2026.10.0
   assert_rc 2
   assert_contains "$ERR" 'must not start with "v"'
 }
@@ -106,11 +106,26 @@ test_release_rejects_leading_v() {
 test_release_rejects_malformed_versions() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  for v in '1.0.0' '0.1' '0.1.0.1' 'abc' '0.x.0' '0.1.0-rc.1' '0.1.2.3' ''; do
+  before=$(tree_fingerprint "$TEST_TMP/repo")
+  for v in '0.2.0' '26.10.0' '2026.01.0' '2026.0.0' '2026.13.0' '2026.10' '2026.10.0-beta' '2026.10.0+build' '2026.10.00' '1.0.0' 'abc' ''; do
     run "$TEST_TMP/repo/scripts/release.sh" "$v"
     assert_rc 2 "version [$v] must be rejected"
     assert_contains "$ERR" 'invalid version'
   done
+  assert_eq "$before" "$(tree_fingerprint "$TEST_TMP/repo")" 'invalid versions must not mutate the repository'
+}
+
+test_release_accepts_calendar_versions() {
+  setup_test_env
+  copy_release_tree "$TEST_TMP/repo"
+  # Stop at the existing dirty-tree precondition after version validation.
+  printf '\nDirty fixture\n' >> "$TEST_TMP/repo/README.md"
+  for version in 2026.10.0 2026.10.1 2027.1.0; do
+    run "$TEST_TMP/repo/scripts/release.sh" "$version"
+    assert_rc 1
+    assert_contains "$ERR" 'working tree is dirty'
+  done
+  assert_file_missing "$TEST_TMP/repo/dist"
 }
 
 test_release_rejects_dirty_working_tree() {
@@ -118,7 +133,7 @@ test_release_rejects_dirty_working_tree() {
   copy_release_tree "$TEST_TMP/repo"
   # Make working tree dirty
   echo "# change" >> "$TEST_TMP/repo/README.md"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 1
   assert_contains "$ERR" 'working tree is dirty'
 }
@@ -126,12 +141,12 @@ test_release_rejects_dirty_working_tree() {
 test_release_rejects_missing_changelog_entry() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  # Update CHANGELOG to remove the 0.2.0 entry
-  sed '/^## \[0\.2\.0\] - /d' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
+  # Update CHANGELOG to remove the 2099.12.0 entry
+  sed '/^## \[2099\.12\.0\] - /d' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
   mv "$TEST_TMP/changelog" "$TEST_TMP/repo/CHANGELOG.md"
   git -C "$TEST_TMP/repo" add -A
   git -C "$TEST_TMP/repo" commit -q -m 'Remove fixture release entry' || assert_fail 'fixture commit failed'
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 1
   assert_contains "$ERR" 'CHANGELOG.md must contain a release entry'
 }
@@ -140,11 +155,11 @@ test_release_rejects_unreleased_changelog_entry() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
   # Keep the notes under Unreleased instead of a versioned release entry.
-  sed 's/^## \[0\.2\.0\] - .*/## [Unreleased]/' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
+  sed 's/^## \[2099\.12\.0\] - .*/## [Unreleased]/' "$TEST_TMP/repo/CHANGELOG.md" > "$TEST_TMP/changelog"
   mv "$TEST_TMP/changelog" "$TEST_TMP/repo/CHANGELOG.md"
   git -C "$TEST_TMP/repo" add -A
   git -C "$TEST_TMP/repo" commit -q -m 'Mark fixture notes Unreleased' || assert_fail 'fixture commit failed'
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 1
   assert_contains "$ERR" 'CHANGELOG.md must contain a release entry'
 }
@@ -152,7 +167,7 @@ test_release_rejects_unreleased_changelog_entry() {
 test_release_valid_version_passes_preconditions() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
   # Script should complete all preconditions successfully
   assert_not_contains "$ERR" 'working tree is dirty'
@@ -162,38 +177,38 @@ test_release_valid_version_passes_preconditions() {
 test_release_generates_formula_with_correct_sha() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
   # Formula should be generated
   assert_file_exists "$TEST_TMP/repo/Formula/sandshell.rb"
   # Verify formula contains the correct version and owner
   assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'homepage "https://github.com/dergrossedev/homebrew-sandshell"'
   # Verify formula references the correct download URL
-  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.2.0/sandshell-0.2.0.tar.gz"'
+  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v2099.12.0/sandshell-2099.12.0.tar.gz"'
   # Verify formula does NOT contain explicit Ruby version declaration
-  assert_not_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'version '"'"'ruby'"'"''
+  assert_not_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'version "'
 }
 
 test_release_formula_receives_package_sha() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
   formula_content=$(cat "$TEST_TMP/repo/Formula/sandshell.rb")
-  package_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-0.2.0.tar.gz.sha256")
+  package_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
   assert_contains "$formula_content" "sha256 \"$package_sha\""
 }
 
 test_release_sha_consistency_guard() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
   # Verify package/formula SHA is consistent
-  original_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-0.2.0.tar.gz.sha256")
+  original_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
   # Package again to get new SHA
-  run "$TEST_TMP/repo/scripts/package.sh" 0.2.0
-  new_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-0.2.0.tar.gz.sha256")
+  run "$TEST_TMP/repo/scripts/package.sh" 2099.12.0
+  new_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
   # They should match since we didn't change anything
   assert_eq "$original_sha" "$new_sha"
 }
@@ -205,7 +220,7 @@ test_release_fails_on_quality_gate() {
   echo "# stale" >> "$TEST_TMP/repo/src/core.sh"
   git -C "$TEST_TMP/repo" add -A
   git -C "$TEST_TMP/repo" commit -q -m 'Make fixture artifact stale' || assert_fail 'fixture commit failed'
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 1
   assert_contains "$ERR" 'quality gate failed'
 }
@@ -213,9 +228,9 @@ test_release_fails_on_quality_gate() {
 test_release_outputs_compact_summary() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
-  run "$TEST_TMP/repo/scripts/release.sh" 0.2.0
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
-  assert_contains "$OUT" 'Prepared v0.2.0'
+  assert_contains "$OUT" 'Prepared v2099.12.0'
   assert_contains "$OUT" 'Package:'
   assert_contains "$OUT" 'SHA256:'
   assert_contains "$OUT" 'Formula:'
@@ -229,6 +244,7 @@ run_tests \
   test_release_rejects_extra_arguments \
   test_release_rejects_leading_v \
   test_release_rejects_malformed_versions \
+  test_release_accepts_calendar_versions \
   test_release_rejects_dirty_working_tree \
   test_release_rejects_missing_changelog_entry \
   test_release_rejects_unreleased_changelog_entry \

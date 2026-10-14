@@ -35,7 +35,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 
 usage() {
   printf 'usage: scripts/package.sh VERSION\n'
-  printf '  VERSION  pre-1.0 semantic version, e.g. 0.1.0\n'
+  printf '  VERSION  stable numeric version, e.g. 2026.10.0\n'
 }
 
 if [ $# -ne 1 ]; then
@@ -51,9 +51,9 @@ case $1 in
 esac
 
 version=$1
-version_re='^0\.[0-9]+\.[0-9]+$'
+version_re='^[0-9]+\.[0-9]+\.[0-9]+$'
 if ! [[ $version =~ $version_re ]]; then
-  printf 'package.sh: invalid version: %s (expected a pre-1.0 version like 0.1.0)\n' "$version" >&2
+  printf 'package.sh: invalid version: %s (expected three numeric components)\n' "$version" >&2
   exit 2
 fi
 

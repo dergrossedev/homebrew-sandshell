@@ -1,45 +1,26 @@
 # Releasing sandshell
 
-Operational checklist for cutting a release. Nothing here is automated; every publishing step requires explicit human approval.
+Future releases use YYYY.M.PATCH calendar versions, for example
+2026.10.0 or 2026.10.1.
 
-Repositories (placeholders until the public owner is known):
+1. Update `CHANGELOG.md` with a dated entry for `VERSION`, documenting compatibility and breaking changes.
+2. Run `./scripts/release.sh VERSION`.
+3. Review and commit the generated changes on `main`.
+4. Push and wait for CI to pass.
+5. Run `./scripts/publish.sh VERSION`.
+6. Verify the Homebrew release:
 
-- `dergrossedev/homebrew-sandshell` — Homebrew formula
+       brew update
+       brew audit --strict dergrossedev/sandshell/sandshell
+       brew install dergrossedev/sandshell/sandshell
 
-## Release preparation (local automation)
+   For an existing installation, use `brew upgrade sandshell`.
 
-1. Edit `CHANGELOG.md` and add a release entry for the new version with today's date (replace `Unreleased`).
-2. Run the release preparation automation:
-
-       ./scripts/release.sh VERSION
-
-   Example:
-
-       ./scripts/release.sh 0.2.0
-
-3. Review the git diff to confirm the generated `Formula/sandshell.rb` and any other changes.
-
-## Release checklist
-
-1. Commit the release preparation changes from the automation.
-2. Push to `main` and wait for CI.
-3. Create the annotated tag (human approval required):
-
-       git tag -a vVERSION -m "sandshell VERSION"
-
-4. Publish the GitHub release (human approval required) and attach:
-   - `dist/sandshell-VERSION.tar.gz`
-   - `dist/sandshell-VERSION.tar.gz.sha256`
-5. Publish the tap (human approval required).
-6. Verify installation from the public tap:
-
-       brew install dergrossedev/sandshell
-
-`dist/` is git-ignored; never commit release archives. Do not automate these publication steps.
+`dist/` is git-ignored; never commit release archives. If publishing fails, follow the printed recovery command. Do not move existing tags or overwrite releases, including `v0.1.0`.
 
 ## Real Docker Sandbox smoke tests
 
-Not CI tests: a human performs them against a real Docker Sandboxes installation before every release, using temporary repositories and sandboxes, cleaned up with the existing safe commands. The automated suite (`./scripts/check.sh`) is fully noninteractive and never invokes real `sbx`, Docker, an editor, or a terminal; everything below belongs here.
+Before a release, run these checks manually in temporary repositories and sandboxes, then clean up with the existing safe commands.
 
 - **Base sandbox**: `sbxc -a claude`, `sbxr` — creation succeeds, the generated name is sensible, the env file is applied, resume works, no unexpected second sandbox.
 - **Codex**: `sbxc -a codex`, `sbxr NAME` — the agent launches; completions and listing show the sandbox.

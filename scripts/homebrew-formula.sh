@@ -5,7 +5,7 @@
 #   scripts/homebrew-formula.sh --owner OWNER --version VERSION --sha256 SHA256
 #
 # Writes the formula to stdout, so it can be redirected into the tap:
-#   scripts/homebrew-formula.sh --owner OWNER --version 0.1.0 --sha256 SHA256 \
+#   scripts/homebrew-formula.sh --owner OWNER --version 2026.10.0 --sha256 SHA256 \
 #     > /tmp/sandshell.rb
 #
 # The formula is generated from packaging/homebrew/Formula/sandshell.rb.in.
@@ -78,9 +78,9 @@ if ! [[ $owner =~ $owner_re ]]; then
   exit 2
 fi
 
-version_re='^0\.[0-9]+\.[0-9]+$'
+version_re='^[0-9]+\.[0-9]+\.[0-9]+$'
 if ! [[ $version =~ $version_re ]]; then
-  printf 'homebrew-formula.sh: invalid version: %s (expected a pre-1.0 version like 0.1.0)\n' "$version" >&2
+  printf 'homebrew-formula.sh: invalid version: %s (expected three numeric components)\n' "$version" >&2
   exit 2
 fi
 

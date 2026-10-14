@@ -65,6 +65,17 @@ test_package_valid_version_succeeds() {
   assert_file_exists "$TEST_TMP/repo/dist/sandshell-0.1.0.tar.gz.sha256"
 }
 
+test_package_accepts_stable_numeric_versions() {
+  setup_test_env
+  copy_package_tree "$TEST_TMP/repo"
+  for version in 1.0.0 2099.12.0; do
+    run "$TEST_TMP/repo/scripts/package.sh" "$version"
+    assert_rc 0
+    assert_file_exists "$TEST_TMP/repo/dist/sandshell-$version.tar.gz"
+    assert_file_exists "$TEST_TMP/repo/dist/sandshell-$version.tar.gz.sha256"
+  done
+}
+
 test_package_usage_errors_exit_2() {
   setup_test_env
   copy_package_tree "$TEST_TMP/repo"
@@ -84,7 +95,7 @@ test_package_usage_errors_exit_2() {
 test_package_rejects_invalid_versions() {
   setup_test_env
   copy_package_tree "$TEST_TMP/repo"
-  for v in '1.0.0' '0.1' '0.1.0.1' 'v0.1.0' 'abc' '0.x.0' '0.1.0-rc.1' '0.1.2.3' ''; do
+  for v in '0.1' '0.1.0.1' 'v0.1.0' 'abc' '0.x.0' '0.1.0-rc.1' '0.1.2.3' ''; do
     run "$TEST_TMP/repo/scripts/package.sh" "$v"
     assert_rc 2 "version [$v] must be rejected"
     assert_contains "$ERR" 'invalid version'
@@ -229,6 +240,7 @@ test_dist_is_gitignored() {
 run_tests \
   test_package_script_is_executable \
   test_package_valid_version_succeeds \
+  test_package_accepts_stable_numeric_versions \
   test_package_usage_errors_exit_2 \
   test_package_rejects_invalid_versions \
   test_package_refuses_stale_artifact \

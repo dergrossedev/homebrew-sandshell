@@ -182,11 +182,11 @@ sandshell supports three workspace modes, announced when a sandbox is created:
 ## Development
 
 ```sh
-./scripts/build.sh          # regenerate sandshell.sh from src/
-./scripts/build.sh --check  # verify the committed artifact is current
-./scripts/test.sh           # run the test suite (mocked sbx; no Docker needed)
-./scripts/check.sh          # full quality gate: syntax, build freshness, ShellCheck, tests
-./scripts/package.sh 0.1.0  # build the release archive under dist/
+./scripts/build.sh              # regenerate sandshell.sh from src/
+./scripts/build.sh --check      # verify the committed artifact is current
+./scripts/test.sh               # run the test suite (mocked sbx; no Docker needed)
+./scripts/check.sh              # full quality gate: syntax, build freshness, ShellCheck, tests
+./scripts/package.sh 2026.10.0  # build the release archive under dist/
 ```
 
 The maintainable source lives in `src/`; the committed `sandshell.sh` is generated and must not be edited by hand. Tests run under both Bash and Zsh and mock `sbx`, so no Docker daemon is required. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor workflow.
