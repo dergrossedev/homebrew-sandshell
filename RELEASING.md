@@ -6,29 +6,34 @@ Repositories (placeholders until the public owner is known):
 
 - `dergrossedev/homebrew-sandshell` — Homebrew formula
 
+## Release preparation (local automation)
+
+1. Edit `CHANGELOG.md` and add a release entry for the new version with today's date (replace `Unreleased`).
+2. Run the release preparation automation:
+
+       ./scripts/release.sh VERSION
+
+   Example:
+
+       ./scripts/release.sh 0.2.0
+
+3. Review the git diff to confirm the generated `Formula/sandshell.rb` and any other changes.
+
 ## Release checklist
 
-1. Clean working tree (`git status --porcelain` prints nothing) on `main`.
-2. Run the quality gate: `./scripts/check.sh`
-3. Verify the generated artifact is current: `./scripts/build.sh --check`
-4. Perform the real Docker Sandbox smoke tests (below).
-5. Package: `./scripts/package.sh 0.1.0`
-6. Verify the archive and checksum: `tar -tzf dist/sandshell-0.1.0.tar.gz`, then `(cd dist && sha256sum -c sandshell-0.1.0.tar.gz.sha256)` (`(cd dist && shasum -a 256 -c sandshell-0.1.0.tar.gz.sha256)` on macOS).
-7. Change `CHANGELOG.md` `0.1.0` from `Unreleased` to the actual date, and commit.
-8. Create the annotated tag (human approval required): `git tag -a v0.1.0 -m "sandshell 0.1.0"`
-9. Publish the GitHub release (human approval required) and attach `dist/sandshell-0.1.0.tar.gz` and `dist/sandshell-0.1.0.tar.gz.sha256`.
-10. Generate the Homebrew formula with the published archive checksum:
+1. Commit the release preparation changes from the automation.
+2. Push to `main` and wait for CI.
+3. Create the annotated tag (human approval required):
 
-        ./scripts/homebrew-formula.sh --owner dergrossedev --version 0.1.0 --sha256 SHA256 \
-          > Formula/sandshell.rb
+       git tag -a vVERSION -m "sandshell VERSION"
 
-11. Commit the generated `Formula/sandshell.rb` to the repository. Update `homebrew-sandshell/Formula/sandshell.rb` in the tap repository, validate it (`ruby -c Formula/sandshell.rb`, `brew audit` when Homebrew is available), and run an approved install/test/uninstall.
+4. Publish the GitHub release (human approval required) and attach:
+   - `dist/sandshell-VERSION.tar.gz`
+   - `dist/sandshell-VERSION.tar.gz.sha256`
+5. Publish the tap (human approval required).
+6. Verify installation from the public tap:
 
-When the version or release-archive SHA256 changes, regenerate `Formula/sandshell.rb` using the command in step 10.
-12. Publish the tap (human approval required).
-13. Verify installation from the public tap:
-
-        brew install dergrossedev/sandshell
+       brew install dergrossedev/sandshell
 
 `dist/` is git-ignored; never commit release archives. Do not automate these publication steps.
 
