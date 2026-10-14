@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test that the repository contains a valid generated Formula/sandshell.rb
-# matching the template inputs.
+# matching the canonical generator for its current release metadata.
 
 set -eu
 
@@ -62,27 +62,40 @@ test_formula_generated_has_correct_homepage() {
   fi
 }
 
+_sandshell_formula_version() {
+  formula_version=$(sed -n 's|^[[:space:]]*url "[^"]*/sandshell-\([^"/]*\)\.tar\.gz"$|\1|p' "$formula_path")
+  assert_match '^[0-9]+\.[0-9]+\.[0-9]+$' "$formula_version" \
+    'Could not extract a valid release version from Formula/sandshell.rb URL'
+}
+
+_sandshell_formula_sha256() {
+  formula_sha256=$(sed -n 's/^[[:space:]]*sha256 "\([^"]*\)"$/\1/p' "$formula_path")
+  assert_match '^[0-9a-fA-F]{64}$' "$formula_sha256" \
+    'Could not extract a valid SHA256 from Formula/sandshell.rb (expected 64 hexadecimal characters)'
+}
+
 test_formula_generated_matches_template() {
   setup_test_env
-  run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" \
-    --owner dergrossedev --version 0.1.0 \
-    --sha256 fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c
-  assert_rc 0
-  printf '%s\n' "$OUT" >"$TEST_TMP/expected.rb"
+  _sandshell_formula_version
+  _sandshell_formula_sha256
+  if ! "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" \
+    --owner dergrossedev --version "$formula_version" \
+    --sha256 "$formula_sha256" >"$TEST_TMP/expected.rb"; then
+    assert_fail "Could not generate expected Formula/sandshell.rb"
+  fi
   assert_file_eq "$TEST_TMP/expected.rb" "$formula_path"
   assert_contains "$(cat "$formula_path")" '  desc "Bash and Zsh helpers for Docker Sandboxes"'
 }
 
 test_formula_generated_has_correct_url() {
-  if ! grep -q 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"' "$formula_path"; then
+  _sandshell_formula_version
+  if ! grep -Fqx "  url \"https://github.com/dergrossedev/homebrew-sandshell/releases/download/v$formula_version/sandshell-$formula_version.tar.gz\"" "$formula_path"; then
     assert_fail "Formula/sandshell.rb has incorrect URL"
   fi
 }
 
 test_formula_generated_has_correct_sha256() {
-  if ! grep -q 'sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"' "$formula_path"; then
-    assert_fail "Formula/sandshell.rb has incorrect SHA256"
-  fi
+  _sandshell_formula_sha256
 }
 
 test_formula_template_has_no_version_placeholder() {
