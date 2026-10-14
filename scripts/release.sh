@@ -11,12 +11,11 @@
 #   1. Input validation (version format, arguments)
 #   2. Preconditions (clean tree, required files, no existing tag)
 #   3. Changelog check (must contain release entry for VERSION)
-#   4. Quality gate (check.sh and build.sh --check)
+#   4. Quality gate (check.sh)
 #   5. Build package (package.sh VERSION)
 #   6. Generate Homebrew formula (homebrew-formula.sh)
-#   7. Verify SHA consistency
-#   8. Quality gate and package again
-#   9. Print summary
+#   7. Verify generated formula
+#   8. Print summary
 #
 # Exits non-zero on any failure before side effects.
 # Does not tag, push, publish, or modify GitHub/Homebrew state.
@@ -77,6 +76,7 @@ for file in "${expected_files[@]}"; do
     printf 'release.sh: missing required file: %s\n' "$file" >&2
     exit 1
   fi
+
 done
 
 # Require that tag vVERSION does not already exist locally
@@ -97,22 +97,17 @@ fi
 # Check for release entry with actual date (not "Unreleased")
 # Format: ## [VERSION] - DATE
 # We look for the version in brackets followed by a date with dashes
-if ! grep -q "^## \[${version}\] - " "$changelog"; then
+if ! grep -q "^## \\[${version}\\] - " "$changelog"; then
   printf 'release.sh: CHANGELOG.md must contain a release entry for version %s with a real release date\n' "$version" >&2
   printf 'release.sh: Expected format: ## [%s] - YYYY.MM.DD\n' "$version" >&2
   exit 1
 fi
 
 # --- Quality gate ------------------------------------------------------------
+# Run the full quality gate once
 
 printf '==> Running quality gate: ./scripts/check.sh\n'
 ./scripts/check.sh || {
-  printf 'release.sh: quality gate failed\n' >&2
-  exit 1
-}
-
-printf '==> Running quality gate: ./scripts/build.sh --check\n'
-./scripts/build.sh --check || {
   printf 'release.sh: quality gate failed\n' >&2
   exit 1
 }
@@ -184,48 +179,43 @@ printf '==> Generating Homebrew formula: %s\n' "$formula_file"
   exit 1
 }
 
-# --- Verify formula was generated -------------------------------------------
+# --- Verify generated formula -----------------------------------------------
 
 if [ ! -f "$formula_file" ]; then
   printf 'release.sh: homebrew-formula.sh did not produce expected file: %s\n' "$formula_file" >&2
   exit 1
 fi
 
-# --- Quality gate and package again -----------------------------------------
-
-printf '==> Running quality gate again: ./scripts/check.sh\n'
-./scripts/check.sh || {
-  printf 'release.sh: quality gate failed after formula generation\n' >&2
+# Verify the formula references the correct versioned archive
+formula_content=$(cat "$formula_file")
+if ! grep -q "url \"https://github.com/dergrossedev/homebrew-sandshell/releases/download/v${version}/sandshell-${version}.tar.gz\"" <<< "$formula_content"; then
+  printf 'release.sh: generated formula has incorrect URL\n' >&2
   rm -f "$formula_file"
-  exit 1
-}
-
-printf '==> Running quality gate again: ./scripts/build.sh --check\n'
-./scripts/build.sh --check || {
-  printf 'release.sh: quality gate failed after formula generation\n' >&2
-  rm -f "$formula_file"
-  exit 1
-}
-
-printf '==> Building package again: ./scripts/package.sh %s\n' "$version"
-./scripts/package.sh "$version" || {
-  printf 'release.sh: package.sh failed after formula generation\n' >&2
-  rm -f "$formula_file"
-  exit 1
-}
-
-# Verify SHA consistency (guard against generating formula for different package)
-printf '==> Verifying package/formula SHA consistency\n'
-new_checksum="$dist_dir/sandshell-$version.tar.gz.sha256"
-new_package_sha=$(awk '{print $1}' "$new_checksum")
-
-if [ "$package_sha" != "$new_package_sha" ]; then
-  printf 'release.sh: SHA mismatch detected\n' >&2
-  printf 'release.sh: SHA in Formula/sandshell.rb: %s\n' "$package_sha" >&2
-  printf 'release.sh: SHA in dist/sandshell-%s.tar.gz.sha256: %s\n' "$version" "$new_package_sha" >&2
-  rm -f "$formula_file" "$new_checksum"
   exit 1
 fi
+
+# Verify the formula contains the exact package SHA
+if ! grep -q "sha256 \"${package_sha}\"" <<< "$formula_content"; then
+  printf 'release.sh: generated formula has incorrect SHA256\n' >&2
+  rm -f "$formula_file"
+  exit 1
+fi
+
+# Verify formula does NOT contain explicit Ruby version declaration
+if grep -q '^[[:space:]]*version ' "$formula_file"; then
+  printf 'release.sh: generated formula contains explicit Ruby version declaration\n' >&2
+  rm -f "$formula_file"
+  exit 1
+fi
+
+# --- Run focused formula consistency test -----------------------------------
+
+printf '==> Running focused formula consistency test\n'
+./tests/test_homebrew_formula_generated.sh || {
+  printf 'release.sh: formula consistency test failed\n' >&2
+  rm -f "$formula_file"
+  exit 1
+}
 
 # --- Final summary ----------------------------------------------------------
 

@@ -12,14 +12,14 @@ unset _helpers_dir
 
 # copy_release_tree DEST — copy current working-tree inputs into a clean,
 # disposable repository. The explicit file list excludes .git and temp/output
-# directories. Only shell compatibility tests are needed for the fixture's real
-# quality gate; copying release tests would recurse into this suite.
+# directories. Include shell compatibility and formula validation tests for the
+# real quality gate; copying release tests would recurse into this suite.
 copy_release_tree() {
   mkdir -p "$1/scripts" "$1/src" "$1/completions" "$1/examples" "$1/Formula" "$1/tests/mocks"
   cp -r "$SANDSHELL_ROOT"/scripts/*.sh "$1/scripts/"
   chmod +x "$1"/scripts/*.sh
   cp -r "$SANDSHELL_ROOT"/src/*.sh "$1/src/"
-  cp "$SANDSHELL_SH" "$1/sandshell.sh"
+  cp "$SANDSHELL_ROOT"/sandshell.sh "$1/"
   cp "$SANDSHELL_ROOT"/completions/sandshell.bash "$1/completions/"
   cp "$SANDSHELL_ROOT"/completions/_sandshell "$1/completions/"
   cp "$SANDSHELL_ROOT"/examples/vibe.toml "$1/examples/"
@@ -28,7 +28,9 @@ copy_release_tree() {
   cp "$SANDSHELL_ROOT"/CHANGELOG.md "$1/"
   cp "$SANDSHELL_ROOT"/.gitignore "$1/"
   cp -r "$SANDSHELL_ROOT"/packaging "$1/"
-  cp "$SANDSHELL_ROOT"/tests/helpers.sh "$SANDSHELL_ROOT"/tests/test_shell_compat.sh "$1/tests/"
+  cp "$SANDSHELL_ROOT"/Formula/sandshell.rb "$1/Formula/"
+  cp "$SANDSHELL_ROOT"/tests/helpers.sh "$SANDSHELL_ROOT"/tests/test_shell_compat.sh \
+    "$SANDSHELL_ROOT"/tests/test_homebrew_formula_generated.sh "$1/tests/"
   cp "$SANDSHELL_ROOT"/tests/mocks/sbx "$1/tests/mocks/"
   # Give release tests a dated entry independent of the source changelog.
   if ! grep -q '^## \[2099\.12\.0\] - ' "$1/CHANGELOG.md"; then
@@ -65,7 +67,6 @@ test_release_fixture_is_clean_and_copies_working_tree() {
   printf 'generated archive\n' > "$TEST_TMP/source/dist/generated.tar.gz"
 
   SANDSHELL_ROOT="$TEST_TMP/source"
-  SANDSHELL_SH="$SANDSHELL_ROOT/sandshell.sh"
   copy_release_tree "$TEST_TMP/repo"
 
   assert_file_eq "$SANDSHELL_ROOT/README.md" "$TEST_TMP/repo/README.md"
@@ -77,6 +78,16 @@ test_release_fixture_is_clean_and_copies_working_tree() {
   assert_file_missing "$TEST_TMP/repo/dist"
   run "$TEST_TMP/repo/scripts/check.sh"
   assert_rc 0
+}
+
+test_release_fixture_includes_formula_validation() {
+  setup_test_env
+  copy_release_tree "$TEST_TMP/repo"
+  assert_file_eq "$SANDSHELL_ROOT/tests/test_homebrew_formula_generated.sh" \
+    "$TEST_TMP/repo/tests/test_homebrew_formula_generated.sh"
+  assert_file_eq "$SANDSHELL_ROOT/Formula/sandshell.rb" "$TEST_TMP/repo/Formula/sandshell.rb"
+  run "$TEST_TMP/repo/tests/test_homebrew_formula_generated.sh"
+  assert_rc 0 "$ERR"
 }
 
 test_release_rejects_missing_version() {
@@ -199,18 +210,18 @@ test_release_formula_receives_package_sha() {
   assert_contains "$formula_content" "sha256 \"$package_sha\""
 }
 
-test_release_sha_consistency_guard() {
+test_release_formula_url_and_sha_validation() {
   setup_test_env
   copy_release_tree "$TEST_TMP/repo"
   run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
   assert_rc 0
-  # Verify package/formula SHA is consistent
-  original_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
-  # Package again to get new SHA
-  run "$TEST_TMP/repo/scripts/package.sh" 2099.12.0
-  new_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
-  # They should match since we didn't change anything
-  assert_eq "$original_sha" "$new_sha"
+  # Verify URL contains the version
+  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v2099.12.0/sandshell-2099.12.0.tar.gz"'
+  # Verify SHA matches the package
+  package_sha=$(awk '{print $1}' "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256")
+  assert_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" "sha256 \"$package_sha\""
+  # Verify no explicit version declaration
+  assert_not_contains "$(cat "$TEST_TMP/repo/Formula/sandshell.rb")" 'version "'
 }
 
 test_release_fails_on_quality_gate() {
@@ -237,9 +248,48 @@ test_release_outputs_compact_summary() {
   assert_contains "$OUT" 'Next:'
 }
 
+# Wrap a fixture script and log each invocation outside its Git working tree.
+_sandshell_track_release_script() {
+  mv "$1/scripts/$2" "$1/scripts/$2.original"
+  cat > "$1/scripts/$2" << 'INNER_EOF'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$TEST_TMP/${0##*/}.calls"
+exec "$0.original" "$@"
+INNER_EOF
+  chmod +x "$1/scripts/$2"
+  git -C "$1" add -A
+  git -C "$1" commit -q -m "Track $2 calls" || assert_fail 'fixture instrumentation commit failed'
+  assert_eq '' "$(git -C "$1" status --porcelain)" 'instrumented fixture must be clean'
+}
+
+test_release_runs_quality_gate_exactly_once() {
+  setup_test_env
+  copy_release_tree "$TEST_TMP/repo"
+  _sandshell_track_release_script "$TEST_TMP/repo" check.sh
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
+  assert_rc 0 "$ERR"
+  assert_file_exists "$TEST_TMP/check.sh.calls"
+  assert_eq '1' "$(awk 'END {print NR}' "$TEST_TMP/check.sh.calls")" 'check.sh must run exactly once'
+}
+
+test_release_packages_exactly_once() {
+  setup_test_env
+  copy_release_tree "$TEST_TMP/repo"
+  _sandshell_track_release_script "$TEST_TMP/repo" package.sh
+  run "$TEST_TMP/repo/scripts/release.sh" 2099.12.0
+  assert_rc 0 "$ERR"
+  assert_file_exists "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz"
+  assert_file_exists "$TEST_TMP/repo/dist/sandshell-2099.12.0.tar.gz.sha256"
+  assert_file_exists "$TEST_TMP/package.sh.calls"
+  assert_eq '1' "$(awk 'END {print NR}' "$TEST_TMP/package.sh.calls")" 'package.sh must run exactly once'
+  assert_eq '2099.12.0' "$(cat "$TEST_TMP/package.sh.calls")"
+}
+
 run_tests \
   test_release_script_is_executable \
   test_release_fixture_is_clean_and_copies_working_tree \
+  test_release_fixture_includes_formula_validation \
   test_release_rejects_missing_version \
   test_release_rejects_extra_arguments \
   test_release_rejects_leading_v \
@@ -251,6 +301,8 @@ run_tests \
   test_release_valid_version_passes_preconditions \
   test_release_generates_formula_with_correct_sha \
   test_release_formula_receives_package_sha \
-  test_release_sha_consistency_guard \
+  test_release_formula_url_and_sha_validation \
   test_release_fails_on_quality_gate \
-  test_release_outputs_compact_summary
+  test_release_outputs_compact_summary \
+  test_release_runs_quality_gate_exactly_once \
+  test_release_packages_exactly_once
