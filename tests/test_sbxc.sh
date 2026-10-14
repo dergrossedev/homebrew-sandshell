@@ -22,7 +22,7 @@ test_sbxc_help() {
   run sbxc --help
   assert_rc 0
   assert_contains "$OUT" 'Usage: sbxc [-a AGENT] [-d DIR] [-s SIZE] [-n NAME] [--clone] [--env-file FILE] [--model MODEL]'
-  assert_contains "$OUT" 'Agents: claude (default), codex, opencode, vibe, claude-ollama, opencode-ollama'
+  assert_contains "$OUT" 'Agents: claude, codex, opencode (default), vibe, claude-ollama, opencode-ollama'
   assert_contains "$OUT" '--model MODEL'
   assert_contains "$OUT" 'qwen3.5:4b-mlx'
 }
@@ -112,16 +112,16 @@ test_sbxc_refuses_sensitive_workspaces() {
   assert_contains "$ERR" 'sbxc: refusing sensitive workspace: /usr'
 }
 
-test_sbxc_defaults_to_claude_with_micro_size() {
+test_sbxc_defaults_to_opencode_with_micro_size() {
   setup_test_env
   make_workspace "$TEST_TMP/ws/proj"
   run sbxc -d "$TEST_TMP/ws/proj"
   assert_rc 0
   calls=$(mock_calls)
-  assert_contains "$calls" 'create --name sbx-proj-claude-'
+  assert_contains "$calls" 'create --name sbx-proj-opencode-'
   assert_contains "$calls" '--cpus 2 --memory 2g --pull missing --skills off'
-  assert_contains "$calls" " claude $TEST_TMP/ws/proj"
-  assert_contains "$ERR" 'Creating sandbox: sbx-proj-claude-'
+  assert_contains "$calls" " opencode $TEST_TMP/ws/proj"
+  assert_contains "$ERR" 'Creating sandbox: sbx-proj-opencode-'
   assert_contains "$ERR" 'Mode: direct'
   # creates but does not launch the interactive agent
   assert_not_contains "$calls" 'run --name'
@@ -141,7 +141,7 @@ test_sbxc_size_mappings() {
 
 test_sbxc_builtin_agent_mappings() {
   setup_test_env
-  for agent in codex opencode; do
+  for agent in claude codex opencode; do
     make_workspace "$TEST_TMP/ws/$agent"
     run sbxc -d "$TEST_TMP/ws/$agent" -a "$agent"
     assert_rc 0
@@ -480,7 +480,7 @@ run_tests \
   test_sbxc_rejects_missing_directory \
   test_sbxc_refuses_broad_workspaces \
   test_sbxc_refuses_sensitive_workspaces \
-  test_sbxc_defaults_to_claude_with_micro_size \
+  test_sbxc_defaults_to_opencode_with_micro_size \
   test_sbxc_size_mappings \
   test_sbxc_builtin_agent_mappings \
   test_sbxc_claude_ollama_maps_to_kit_image \

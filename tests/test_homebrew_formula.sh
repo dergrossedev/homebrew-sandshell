@@ -44,6 +44,7 @@ test_formula_generator_produces_expected_formula() {
   assert_rc 0
   formula=$OUT
   assert_contains "$formula" 'class Sandshell < Formula'
+  assert_contains "$formula" '  desc "Bash and Zsh helpers for Docker Sandboxes"'
   assert_contains "$formula" "url \"https://github.com/$OWNER/homebrew-sandshell/releases/download/v$VERSION/sandshell-$VERSION.tar.gz\""
   assert_contains "$formula" "sha256 \"$SHA256\""
   assert_not_contains "$formula" 'version "'
@@ -69,9 +70,20 @@ test_formula_installs_example_under_pkgshare() {
   block=$(printf '%s\n' "$OUT" | sed -n '/^  test do$/,/^  end$/p')
   assert_contains "$block" 'pkgshare/"examples/vibe.toml"'
   assert_contains "$block" 'assert_path_exists'
-  # The caveats mention where the example is installed.
+}
+
+test_formula_caveats_only_describe_required_shell_setup() {
+  setup_test_env
+  generate_formula
+  assert_rc 0
   caveats=$(printf '%s\n' "$OUT" | sed -n '/def caveats/,/^  end$/p')
-  assert_contains "$caveats" 'share/sandshell/examples/vibe.toml'
+  assert_eq '  def caveats
+    <<~EOS
+      Add this line to ~/.zshrc or ~/.bashrc:
+
+        source "$(brew --prefix sandshell)/libexec/sandshell.sh"
+    EOS
+  end' "$caveats"
 }
 
 test_formula_generator_leaves_no_unresolved_placeholders() {
@@ -209,6 +221,7 @@ run_tests \
   test_formula_template_and_docs_exist \
   test_formula_generator_produces_expected_formula \
   test_formula_installs_example_under_pkgshare \
+  test_formula_caveats_only_describe_required_shell_setup \
   test_formula_generator_leaves_no_unresolved_placeholders \
   test_formula_generator_has_no_hardcoded_prefixes \
   test_formula_generator_declares_no_dependencies \

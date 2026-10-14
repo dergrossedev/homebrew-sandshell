@@ -105,7 +105,7 @@ _sandshell_sbxwt_help() {
 # Manage host Git worktrees paired with Docker sandboxes.
 sbxwt() {
   local command=${1:-ls}
-  local branch='' base_branch='' target_branch='' agent=claude size=micro env_file='' default_env=''
+  local branch='' base_branch='' target_branch='' agent=opencode size=micro env_file='' default_env=''
   local repository worktree_root worktree project branch_slug sandbox listing rows row
   local wt_path wt_branch sandbox_name sandbox_agent sandbox_status rest
   local metadata changes commits target_worktree registered=0 merged=0

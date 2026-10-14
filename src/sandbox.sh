@@ -229,7 +229,7 @@ _sbx_vibe_setup() {
 }
 
 sbxc() {
-  local agent=claude workspace="$PWD" size=micro name='' clone=0 model=''
+  local agent=opencode workspace="$PWD" size=micro name='' clone=0 model=''
   local target cpus memory project env_file='' env_override='' vibe_config
   local existing names matches answer repo_root mode config_root
   local home_physical
@@ -244,7 +244,7 @@ sbxc() {
           'Usage: sbxc [-a AGENT] [-d DIR] [-s SIZE] [-n NAME] [--clone] [--env-file FILE] [--model MODEL]' \
           '' \
           'Creates but does not launch a sandbox.' \
-          'Agents: claude (default), codex, opencode, vibe, claude-ollama, opencode-ollama' \
+          'Agents: claude, codex, opencode (default), vibe, claude-ollama, opencode-ollama' \
           'Sizes:  micro (default: 2 CPUs, 2 GiB), small (2 CPUs, 4 GiB), medium (4 CPUs, 8 GiB)' \
           '  -a, --agent AGENT       Agent' \
           '  -d, --dir DIR           Workspace (default: current directory)' \
@@ -603,34 +603,37 @@ sbxenv() {
           printf '%s\n' \
             'Usage: sbxenv [EDITOR]' \
             "Edit $(_sbx_config_dir)/envs/<project>.env for the current directory." \
-            'Editor priority: EDITOR argument, then micro, VISUAL, EDITOR, or vi.' \
+            'Editor priority: EDITOR argument, then VISUAL, EDITOR, micro, nano, vim, or vi.' \
             'Creates a missing env file with permissions 600.'
           return 0 ;;
         -*) printf 'sbxenv: unknown option: %s\n' "$1" >&2; return 2 ;;
-        *) editor=$1; editor_args=("$1") ;;
+        *) editor=$1 ;;
       esac ;;
     *) printf 'sbxenv: expected at most one editor argument\n' >&2; return 2 ;;
   esac
 
   if [[ -z $editor ]]; then
-    if command -v micro >/dev/null 2>&1; then
-      editor=micro
-      editor_args=(micro)
-    else
-      for selection in "${VISUAL:-}" "${EDITOR:-}" vi; do
-        [[ -n $selection ]] || continue
-        if [[ -n ${ZSH_VERSION:-} ]]; then
-          # Zsh-only (z) flag word splitting, guarded by the ZSH_VERSION check.
-          # shellcheck disable=SC2296,SC2206
-          editor_args=(${(z)selection})
-          editor=${editor_args[1]-}
-        else
-          IFS=$' \t' read -r -a editor_args <<< "$selection"
-          editor=${editor_args[0]-}
+    editor=${VISUAL:-${EDITOR:-}}
+    if [[ -z $editor ]]; then
+      for selection in micro nano vim vi; do
+        if command -v "$selection" >/dev/null 2>&1; then
+          editor=$selection
+          break
         fi
-        [[ -n $editor ]] && command -v "$editor" >/dev/null 2>&1 && break
-        editor=''
       done
+    fi
+  fi
+  if [[ -n $editor ]]; then
+    if command -v "$editor" >/dev/null 2>&1; then
+      editor_args=("$editor")
+    elif [[ -n ${ZSH_VERSION:-} ]]; then
+      # Zsh-only (z) flag word splitting, guarded by the ZSH_VERSION check.
+      # shellcheck disable=SC2296,SC2206
+      editor_args=(${(z)editor})
+      editor=${editor_args[1]-}
+    else
+      IFS=$' \t' read -r -a editor_args <<< "$editor"
+      editor=${editor_args[0]-}
     fi
   fi
   if [[ -z $editor ]]; then
@@ -638,7 +641,7 @@ sbxenv() {
     return 127
   fi
   if ! command -v "$editor" >/dev/null 2>&1; then
-    printf 'sbxenv: editor not found: %s\n' "$editor" >&2
+    printf 'sbxenv: editor not found: %s; set VISUAL or EDITOR, or pass one: sbxenv EDITOR\n' "$editor" >&2
     return 127
   fi
 

@@ -48,7 +48,7 @@ source "$HOME/.local/share/sandshell/completions/sandshell.bash"
 From your project directory:
 
 ```sh
-sbxc             # create a sandbox; does not launch the agent
+sbxc             # create an OpenCode sandbox; does not launch the agent
 sbxr             # list this project's sandboxes
 sbxr SANDBOX     # resume using a name from the listing
 ```
@@ -56,7 +56,7 @@ sbxr SANDBOX     # resume using a name from the listing
 To choose another agent:
 
 ```sh
-sbxc -a opencode
+sbxc -a claude
 sbxc -a opencode-ollama
 ```
 
@@ -76,7 +76,7 @@ Run `<command> --help` for details.
 
 ## Agents
 
-Choose with `sbxc -a` or `sbxwt create -a`: `claude` (default), `codex`, `opencode`, `vibe`, `claude-ollama`, or `opencode-ollama`.
+Choose with `sbxc -a` or `sbxwt create -a`: `claude`, `codex`, `opencode` (default), `vibe`, `claude-ollama`, or `opencode-ollama`.
 
 `opencode` is the provider-neutral, general-purpose choice. The Ollama presets require Ollama running locally with the model already installed. `opencode-ollama` defaults to `qwen3.5:4b-mlx`; sandshell never downloads models.
 

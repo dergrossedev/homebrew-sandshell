@@ -62,6 +62,17 @@ test_formula_generated_has_correct_homepage() {
   fi
 }
 
+test_formula_generated_matches_template() {
+  setup_test_env
+  run "$SANDSHELL_ROOT/scripts/homebrew-formula.sh" \
+    --owner dergrossedev --version 0.1.0 \
+    --sha256 fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c
+  assert_rc 0
+  printf '%s\n' "$OUT" >"$TEST_TMP/expected.rb"
+  assert_file_eq "$TEST_TMP/expected.rb" "$formula_path"
+  assert_contains "$(cat "$formula_path")" '  desc "Bash and Zsh helpers for Docker Sandboxes"'
+}
+
 test_formula_generated_has_correct_url() {
   if ! grep -q 'url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"' "$formula_path"; then
     assert_fail "Formula/sandshell.rb has incorrect URL"
@@ -95,5 +106,6 @@ run_tests \
   test_formula_generated_has_sandshell_class \
   test_formula_generated_has_no_version_declaration \
   test_formula_generated_has_correct_homepage \
+  test_formula_generated_matches_template \
   test_formula_generated_has_correct_url \
   test_formula_generated_has_correct_sha256
