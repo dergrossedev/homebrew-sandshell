@@ -9,7 +9,6 @@ class Sandshell < Formula
   desc "Small Bash/Zsh helpers for Docker Sandboxes"
   homepage "https://github.com/dergrossedev/homebrew-sandshell"
   url "https://github.com/dergrossedev/homebrew-sandshell/releases/download/v0.1.0/sandshell-0.1.0.tar.gz"
-  version "0.1.0"
   sha256 "fe6e08f5548e5553be9e94b28b3f051752bc73af3cfc518bbf15d58d544bf03c"
   license "MIT"
 

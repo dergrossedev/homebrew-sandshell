@@ -74,9 +74,15 @@ test_formula_generated_has_correct_sha256() {
   fi
 }
 
-test_formula_generated_has_correct_version() {
-  if ! grep -q 'version "0.1.0"' "$formula_path"; then
-    assert_fail "Formula/sandshell.rb has incorrect version"
+test_formula_template_has_no_version_placeholder() {
+  if grep -q 'version "@VERSION@"' "$template_path"; then
+    assert_fail "Template still contains version placeholder"
+  fi
+}
+
+test_formula_generated_has_no_version_declaration() {
+  if grep -q '^[[:space:]]*version ' "$formula_path"; then
+    assert_fail "Generated formula contains explicit version declaration"
   fi
 }
 
@@ -85,8 +91,9 @@ run_tests \
   test_formula_template_exists \
   test_formula_generated_is_valid_ruby \
   test_formula_generated_has_no_placeholders \
+  test_formula_template_has_no_version_placeholder \
   test_formula_generated_has_sandshell_class \
+  test_formula_generated_has_no_version_declaration \
   test_formula_generated_has_correct_homepage \
   test_formula_generated_has_correct_url \
-  test_formula_generated_has_correct_sha256 \
-  test_formula_generated_has_correct_version
+  test_formula_generated_has_correct_sha256

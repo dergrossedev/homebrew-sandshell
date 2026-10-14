@@ -45,8 +45,8 @@ test_formula_generator_produces_expected_formula() {
   formula=$OUT
   assert_contains "$formula" 'class Sandshell < Formula'
   assert_contains "$formula" "url \"https://github.com/$OWNER/homebrew-sandshell/releases/download/v$VERSION/sandshell-$VERSION.tar.gz\""
-  assert_contains "$formula" "version \"$VERSION\""
   assert_contains "$formula" "sha256 \"$SHA256\""
+  assert_not_contains "$formula" 'version "'
   assert_contains "$formula" 'license "MIT"'
   assert_contains "$formula" 'libexec.install "sandshell.sh"'
   assert_contains "$formula" 'bash_completion.install "completions/sandshell.bash"'
