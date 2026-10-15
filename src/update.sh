@@ -89,6 +89,7 @@ _sandshell_update_run() ( # SANDBOX AGENT STATUS
   case $agent in
     vibe) updater=(uv tool install --force mistral-vibe@latest --with 'httpx[socks]') ;;
     opencode|opencode-ollama) updater=(opencode upgrade --method npm); agent=opencode ;;
+    claude|codex) updater=("$agent" update) ;;
   esac
 
   # Bash 3.2 nounset treats an empty array as unset; pass no resource arguments.
@@ -162,7 +163,7 @@ sbxupdate() {
             'Usage: sbxupdate [SANDBOX]' \
             'Update the installed agent CLI in an existing sandbox.' \
             'Without SANDBOX, use the only sandbox matching the current physical workspace.' \
-            'Supports Vibe and OpenCode (including opencode-ollama).' \
+            'Supports: vibe, opencode, opencode-ollama, claude, codex.' \
             '  -h, --help  Show help'
           return 0 ;;
         -*) printf 'sbxupdate: unknown option: %s\n' "$1" >&2; return 2 ;;
@@ -201,7 +202,7 @@ sbxupdate() {
   # Exact known listing identities; never infer the agent from the sandbox name.
   case $agent in
     vibe|docker.io/docker/sbx-kit-vibe:latest) agent=vibe ;;
-    opencode|opencode-ollama) ;;
+    opencode|opencode-ollama|claude|codex) ;;
     *)
       printf 'sbxupdate: unsupported update for agent %s in %s\n' "$agent" "$sandbox" >&2
       return 1 ;;

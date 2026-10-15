@@ -94,12 +94,12 @@ do_exec() {
     exit "${SBX_MOCK_START_RC:-0}"
   fi
   case ${1:-} in
-    vibe|opencode|uv)
+    vibe|opencode|claude|codex|uv)
       [ "$user" = agent ] && [ "$workdir" = /tmp ] && [ ! -t 0 ] && [ ! -t 1 ] || {
         printf 'mock sbx: updater must use agent, /tmp, and no TTY\n' >&2
         exit 2
       }
-      if [ $# -eq 2 ] && [ "$2" = --version ] && { [ "$1" = vibe ] || [ "$1" = opencode ]; }; then
+      if [ $# -eq 2 ] && [ "$2" = --version ] && [ "$1" != uv ]; then
         if [ -f "$state/updated-$name" ]; then
           [ "${SBX_MOCK_VERSION_AFTER_RC:-0}" -eq 0 ] || exit "$SBX_MOCK_VERSION_AFTER_RC"
           if [ "$1" = vibe ]; then
@@ -118,6 +118,7 @@ do_exec() {
         exit 0
       fi
       if { [ $# -eq 4 ] && [ "$1" = opencode ] && [ "$2" = upgrade ] && [ "$3" = --method ] && [ "$4" = npm ]; } ||
+         { [ $# -eq 2 ] && { [ "$1" = claude ] || [ "$1" = codex ]; } && [ "$2" = update ]; } ||
          { [ $# -eq 7 ] && [ "$1" = uv ] && [ "$2" = tool ] && [ "$3" = install ] && [ "$4" = --force ] &&
            [ "$5" = mistral-vibe@latest ] && [ "$6" = --with ] && [ "$7" = 'httpx[socks]' ]; }; then
         : >"$state/updated-$name"

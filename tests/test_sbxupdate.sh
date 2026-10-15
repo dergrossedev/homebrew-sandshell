@@ -20,6 +20,7 @@ test_update_help_usage() {
     assert_rc 0
     assert_contains "$OUT" 'Usage: sbxupdate [SANDBOX]'
     assert_contains "$OUT" 'Update the installed agent CLI in an existing sandbox.'
+    assert_contains "$OUT" 'Supports: vibe, opencode, opencode-ollama, claude, codex.'
   done
   for flag in --all --agent --version ''; do
     run sbxupdate "$flag"
@@ -101,9 +102,40 @@ test_update_opencode_ollama_dispatch() {
   assert_not_contains "$(mock_calls)" 'ollama '
 }
 
+test_update_native_dispatch() {
+  for agent in claude codex; do
+    update_fixture "$agent"
+    export SBX_MOCK_VERSION_BEFORE="$agent 1.1.0" SBX_MOCK_VERSION_AFTER="$agent 1.2.0"
+    run sbxupdate selected
+    assert_rc 0
+    assert_contains "$OUT" "Updating $agent in selected"
+    assert_contains "$OUT" "Before: $agent 1.1.0"
+    assert_contains "$OUT" "After:  $agent 1.2.0"
+    assert_eq "ls
+exec -u agent -w /tmp selected $agent --version
+exec -u agent -w /tmp selected $agent update
+exec -u agent -w /tmp selected $agent --version" "$(mock_calls)"
+    assert_not_contains "$(mock_calls)" 'policy '
+  done
+}
+
+test_update_native_updater_failure() {
+  for agent in claude codex; do
+    update_fixture "$agent"
+    export SBX_MOCK_UPDATE_RC=8
+    run sbxupdate selected
+    assert_rc 8
+    assert_contains "$ERR" 'sbxupdate: updater failed for selected (exit 8)'
+    assert_contains "$OUT" 'After:'
+    assert_not_contains "$OUT" 'restart/resume'
+    assert_not_contains "$(mock_calls)" 'policy '
+    assert_eq running "$(mock_sandbox_status selected)"
+  done
+}
+
 test_update_unverified_agents() {
   update_fixture
-  for agent in claude claude-ollama docker.io/sbx/claude-ollama:latest codex unknown something-vibe-custom; do
+  for agent in claude-ollama docker.io/sbx/claude-ollama:latest unknown something-vibe-custom; do
     make_sandbox selected "$agent" stopped "$PWD"
     run sbxupdate selected
     assert_rc 1
@@ -320,11 +352,12 @@ test_update_lifecycle() {
   assert_eq running "$(mock_sandbox_status selected)"
   assert_not_contains "$(mock_calls)" 'stop selected'
   assert_contains "$OUT" 'restart/resume'
-  make_sandbox selected opencode stopped "$PWD"
+  make_sandbox selected codex stopped "$PWD"
   run sbxupdate selected
   assert_rc 0
   assert_eq stopped "$(mock_sandbox_status selected)"
   assert_contains "$(mock_calls)" 'exec -u agent -w /tmp selected true'
+  assert_contains "$(mock_calls)" 'exec -u agent -w /tmp selected codex update'
   assert_contains "$(mock_calls)" 'stop selected'
   assert_not_contains "$(mock_calls)" 'run --name'
 }
@@ -398,6 +431,10 @@ test_update_mock_rejects_unknown_exec() {
   assert_rc 2
   run sbx exec -u agent -w /tmp selected uv 'tool install --force mistral-vibe@latest --with httpx[socks]'
   assert_rc 2
+  for agent in claude codex; do
+    run sbx exec -u agent -w /tmp selected "$agent" update --force
+    assert_rc 2
+  done
 }
 
 run_tests \
@@ -407,6 +444,8 @@ run_tests \
   test_update_listing_failure \
   test_update_vibe_dispatch \
   test_update_opencode_ollama_dispatch \
+  test_update_native_dispatch \
+  test_update_native_updater_failure \
   test_update_unverified_agents \
   test_update_updater_failure \
   test_update_version_failure_and_unchanged \
