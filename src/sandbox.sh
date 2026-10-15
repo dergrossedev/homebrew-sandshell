@@ -51,6 +51,51 @@ _sbx_sandbox_field() {
   awk -v name="$name" -v column="$column" 'NR > 1 && $1 == name { print $column; exit }' <<< "$listing"
 }
 
+# Read the direct status field of the named entry in sbx ls JSON (an array).
+# Table status cells contain decoration; they are not lifecycle values.
+_sandshell_sandbox_status() { # SANDBOX
+  local listing sandbox_status
+  listing=$(sbx ls --format json) || return
+  sandbox_status=$(awk -v sandbox="$1" '
+    { json = json $0 "\n" }
+    END {
+      while (length(json)) {
+        if (match(json, /^[[:space:]]+/)) { json = substr(json, RLENGTH + 1); continue }
+        if (!match(json, /^("([^"\\]|\\.)*"|[][{}:,]|true|false|null|-?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?)/)) exit 2
+        token = substr(json, 1, RLENGTH); json = substr(json, RLENGTH + 1)
+        if (token == "{" || token == "[") {
+          depth++; kind[depth] = token; value[depth] = 0
+          if (depth == 1) { if (token != "[" || array++) exit 2 }
+          if (depth == 2) { if (token != "{") exit 2; name = state = "" }
+        } else if (token == "}" || token == "]") {
+          if (depth < 1 || (token == "}" && kind[depth] != "{") || (token == "]" && kind[depth] != "[")) exit 2
+          if (depth == 2 && name == sandbox) { result = state; found++ }
+          depth--
+        } else if (token == ":") {
+          value[depth] = 1
+        } else if (token == ",") {
+          value[depth] = 0
+        } else if (substr(token, 1, 1) == "\"") {
+          item = substr(token, 2, length(token) - 2)
+          if (kind[depth] == "{" && !value[depth]) key[depth] = item
+          else if (depth == 2) {
+            if (key[depth] == "name") name = item
+            if (key[depth] == "status") state = item
+          }
+        }
+      }
+      if (depth || !array || found > 1) exit 2
+      if (result != "" && result !~ /^[a-zA-Z][a-zA-Z0-9_-]*$/) exit 2
+      if (tolower(result) == "running" || tolower(result) == "stopped") result = tolower(result)
+      print result
+    }
+  ' <<< "$listing") || {
+    printf 'sandshell: cannot read sandbox lifecycle state for %s\n' "$1" >&2
+    return 1
+  }
+  printf '%s\n' "$sandbox_status"
+}
+
 # Shared exec lifecycle: start a stopped sandbox without launching its agent.
 # Optional exec flags let callers choose the user and working directory.
 _sandshell_sandbox_start() { # CMD SANDBOX STATUS [EXEC_FLAGS...]

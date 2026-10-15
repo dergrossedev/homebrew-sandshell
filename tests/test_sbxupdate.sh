@@ -20,7 +20,7 @@ test_update_help_usage() {
     assert_rc 0
     assert_contains "$OUT" 'Usage: sbxupdate [SANDBOX]'
     assert_contains "$OUT" 'Update the installed agent CLI in an existing sandbox.'
-    assert_contains "$OUT" 'Supports: vibe, opencode, opencode-ollama, claude, codex.'
+    assert_contains "$OUT" 'Supports: vibe, opencode, opencode-ollama, claude, claude-ollama, codex.'
   done
   for flag in --all --agent --version ''; do
     run sbxupdate "$flag"
@@ -112,6 +112,7 @@ test_update_native_dispatch() {
     assert_contains "$OUT" "Before: $agent 1.1.0"
     assert_contains "$OUT" "After:  $agent 1.2.0"
     assert_eq "ls
+ls --format json
 exec -u agent -w /tmp selected $agent --version
 exec -u agent -w /tmp selected $agent update
 exec -u agent -w /tmp selected $agent --version" "$(mock_calls)"
@@ -133,9 +134,109 @@ test_update_native_updater_failure() {
   done
 }
 
+test_update_claude_ollama_dispatch_and_policy() {
+  update_fixture claude-ollama
+  mkdir -p "$SBX_MOCK_STATE/policy"
+  printf 'host.docker.internal:11434\nunrelated.example\n' >"$SBX_MOCK_STATE/policy/selected"
+  cp "$SBX_MOCK_STATE/policy/selected" "$TEST_TMP/before"
+  export CLAUDE_OLLAMA_MODEL='test-model:local'
+  export ANTHROPIC_BASE_URL='http://host.docker.internal:11434'
+  export ANTHROPIC_AUTH_TOKEN='test-only-placeholder'
+  printf 'CLAUDE_OLLAMA_MODEL=%s\nANTHROPIC_BASE_URL=%s\nANTHROPIC_AUTH_TOKEN=%s\n' \
+    "$CLAUDE_OLLAMA_MODEL" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN" >"$SBX_MOCK_STATE/fs/selected/.env"
+  cp "$SBX_MOCK_STATE/fs/selected/.env" "$TEST_TMP/config-before"
+  export SBX_MOCK_VERSION_BEFORE='Claude Code 1.1.0' SBX_MOCK_VERSION_AFTER='Claude Code 1.2.0'
+  run sbxupdate selected
+  assert_rc 0
+  assert_contains "$OUT" 'Before: Claude Code 1.1.0'
+  assert_contains "$OUT" 'After:  Claude Code 1.2.0'
+  assert_eq 'ls
+ls --format json
+exec -u agent -w /tmp selected claude --version
+policy ls selected --json --include-inactive
+policy allow network --sandbox selected downloads.claude.ai:443
+exec -u agent -w /tmp selected claude update
+exec -u agent -w /tmp selected claude --version
+policy rm network --sandbox selected --resource downloads.claude.ai:443 --force' "$(mock_calls)"
+  assert_file_eq "$TEST_TMP/before" "$SBX_MOCK_STATE/policy/selected"
+  assert_file_eq "$TEST_TMP/config-before" "$SBX_MOCK_STATE/fs/selected/.env"
+  assert_eq 'test-model:local' "$CLAUDE_OLLAMA_MODEL"
+  assert_eq 'http://host.docker.internal:11434' "$ANTHROPIC_BASE_URL"
+  assert_eq 'test-only-placeholder' "$ANTHROPIC_AUTH_TOKEN"
+  assert_eq running "$(mock_sandbox_status selected)"
+}
+
+test_update_claude_ollama_preserves_existing_rule() {
+  # Both representations are equivalent, including case-insensitive hosts.
+  for resource in downloads.claude.ai DOWNLOADS.CLAUDE.AI:443; do
+    update_fixture claude-ollama
+    mkdir -p "$SBX_MOCK_STATE/policy"
+    printf 'host.docker.internal:11434\n%s\nunrelated.example\n' "$resource" >"$SBX_MOCK_STATE/policy/selected"
+    cp "$SBX_MOCK_STATE/policy/selected" "$TEST_TMP/before"
+    run sbxupdate selected
+    assert_rc 0
+    assert_contains "$(mock_calls)" 'selected claude update'
+    assert_not_contains "$(mock_calls)" 'policy allow'
+    assert_not_contains "$(mock_calls)" 'policy rm'
+    assert_file_eq "$TEST_TMP/before" "$SBX_MOCK_STATE/policy/selected"
+  done
+}
+
+test_update_claude_ollama_failure_cleans_rule() {
+  update_fixture claude-ollama stopped
+  export SBX_MOCK_UPDATE_RC=8
+  run sbxupdate selected
+  assert_rc 8
+  assert_contains "$ERR" 'updater failed'
+  assert_contains "$(mock_calls)" 'policy rm network --sandbox selected --resource downloads.claude.ai:443 --force'
+  assert_eq '' "$(cat "$SBX_MOCK_STATE/policy/selected")"
+  assert_eq stopped "$(mock_sandbox_status selected)"
+  assert_not_contains "$OUT" 'restart/resume'
+}
+
+test_update_claude_ollama_cleanup_failure() {
+  update_fixture claude-ollama stopped
+  export SBX_MOCK_POLICY_RM_FAIL=downloads.claude.ai:443
+  run sbxupdate selected
+  assert_rc 1
+  assert_contains "$ERR" 'failed to remove temporary rule for downloads.claude.ai:443'
+  assert_eq 'downloads.claude.ai:443' "$(cat "$SBX_MOCK_STATE/policy/selected")"
+  assert_eq stopped "$(mock_sandbox_status selected)"
+  assert_not_contains "$OUT" 'restart/resume'
+}
+
+test_update_claude_ollama_stopped_lifecycle() {
+  update_fixture claude-ollama stopped
+  run sbxupdate selected
+  assert_rc 0
+  assert_eq 'ls
+ls --format json
+exec -u agent -w /tmp selected true
+exec -u agent -w /tmp selected claude --version
+policy ls selected --json --include-inactive
+policy allow network --sandbox selected downloads.claude.ai:443
+exec -u agent -w /tmp selected claude update
+exec -u agent -w /tmp selected claude --version
+policy rm network --sandbox selected --resource downloads.claude.ai:443 --force
+stop selected' "$(mock_calls)"
+  assert_eq '' "$(cat "$SBX_MOCK_STATE/policy/selected")"
+  assert_eq stopped "$(mock_sandbox_status selected)"
+}
+
+test_update_claude_ollama_handled_interruption() {
+  update_fixture claude-ollama stopped
+  export SBX_MOCK_UPDATE_SIGNAL=TERM
+  run sbxupdate selected
+  assert_rc 143
+  assert_contains "$(mock_calls)" 'policy rm network --sandbox selected --resource downloads.claude.ai:443 --force'
+  assert_eq '' "$(cat "$SBX_MOCK_STATE/policy/selected")"
+  assert_eq stopped "$(mock_sandbox_status selected)"
+  assert_not_contains "$OUT" 'restart/resume'
+}
+
 test_update_unverified_agents() {
   update_fixture
-  for agent in claude-ollama docker.io/sbx/claude-ollama:latest unknown something-vibe-custom; do
+  for agent in docker.io/sbx/claude-ollama:latest unknown something-vibe-custom; do
     make_sandbox selected "$agent" stopped "$PWD"
     run sbxupdate selected
     assert_rc 1
@@ -362,6 +463,76 @@ test_update_lifecycle() {
   assert_not_contains "$(mock_calls)" 'run --name'
 }
 
+test_update_decorated_table_lifecycle() {
+  for lifecycle in running stopped; do
+    update_fixture opencode "$lifecycle"
+    if [ "$lifecycle" = running ]; then
+      selected_status='● running'; other_status='○ stopped'
+    else
+      selected_status='○ stopped'; other_status='● running'
+    fi
+    # Current Docker table output: the status cell contains two words.
+    printf 'NAME\tAGENT\tSTATUS\tWORKSPACE\nother\tcodex\t%s\t%s\nselected\topencode\t%s\t%s\n' \
+      "$other_status" "$PWD" "$selected_status" "$PWD" >"$SBX_MOCK_STATE/ls-table"
+    run sbx ls
+    assert_contains "$OUT" '● running'
+    assert_contains "$OUT" '○ stopped'
+    run sbxupdate selected
+    assert_rc 0
+    assert_contains "$(mock_calls)" 'ls --format json'
+    assert_eq "$lifecycle" "$(mock_sandbox_status selected)"
+    assert_contains "$(mock_calls)" 'selected opencode upgrade --method npm'
+    if [ "$lifecycle" = stopped ]; then
+      assert_contains "$(mock_calls)" 'exec -u agent -w /tmp selected true'
+      assert_contains "$(mock_calls)" 'stop selected'
+    else
+      assert_not_contains "$(mock_calls)" 'exec -u agent -w /tmp selected true'
+      assert_not_contains "$(mock_calls)" 'stop selected'
+    fi
+    assert_not_contains "$ERR" '○'
+    assert_not_contains "$ERR" '●'
+  done
+}
+
+test_update_json_lifecycle_fields() {
+  update_fixture
+  # Formatting, field order, unrelated entries, and nested fields must not
+  # change which direct status belongs to the selected sandbox.
+  cat >"$SBX_MOCK_STATE/ls-response.json" <<'JSON'
+[
+  {"name":"other","id":"other-id","agent":"codex","status":"running"},
+  {"status":"starting","workspaces":[{"source":"/tmp/a } brace and \"quote\"","target":"/workspace","name":"selected","status":"running"}],
+   "agent":"opencode","id":"selected-id","name":"selected"}
+]
+JSON
+  run sbxupdate selected
+  assert_rc 1
+  assert_eq 'sbxupdate: sandbox is not in a usable state: selected (starting)' "$ERR"
+  assert_not_contains "$(mock_calls)" 'exec '
+}
+
+test_update_json_lifecycle_failure() {
+  update_fixture
+  export SBX_MOCK_LS_JSON_RC=7
+  run sbxupdate selected
+  assert_rc 7
+  assert_not_contains "$(mock_calls)" 'exec '
+}
+
+test_update_unreadable_json_lifecycle() {
+  update_fixture
+  for response in '' '{"sandboxes":[]}' '[{"name":"selected","status":"running"}' \
+    '[{"name":"selected","status":"○"}]' '[{"name":"selected","status":"●"}]'; do
+    printf '%s\n' "$response" >"$SBX_MOCK_STATE/ls-response.json"
+    run sbxupdate selected
+    assert_rc 1
+    assert_contains "$ERR" 'cannot read sandbox lifecycle state for selected'
+    assert_not_contains "$ERR" '○'
+    assert_not_contains "$ERR" '●'
+    assert_not_contains "$(mock_calls)" 'exec '
+  done
+}
+
 test_update_restoration_failure() {
   update_fixture opencode stopped
   export SBX_MOCK_STOP_RC=5
@@ -446,6 +617,12 @@ run_tests \
   test_update_opencode_ollama_dispatch \
   test_update_native_dispatch \
   test_update_native_updater_failure \
+  test_update_claude_ollama_dispatch_and_policy \
+  test_update_claude_ollama_preserves_existing_rule \
+  test_update_claude_ollama_failure_cleans_rule \
+  test_update_claude_ollama_cleanup_failure \
+  test_update_claude_ollama_stopped_lifecycle \
+  test_update_claude_ollama_handled_interruption \
   test_update_unverified_agents \
   test_update_updater_failure \
   test_update_version_failure_and_unchanged \
@@ -462,6 +639,10 @@ run_tests \
   test_update_handled_interruptions \
   test_update_partial_start_and_unusable_state \
   test_update_lifecycle \
+  test_update_decorated_table_lifecycle \
+  test_update_json_lifecycle_fields \
+  test_update_json_lifecycle_failure \
+  test_update_unreadable_json_lifecycle \
   test_update_restoration_failure \
   test_update_nounset_cleanup \
   test_update_no_trap_option_leakage \

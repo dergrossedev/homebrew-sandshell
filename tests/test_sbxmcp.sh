@@ -260,10 +260,13 @@ test_sbxmcp_restores_stopped_sandbox() {
   setup_test_env
   mkdir -p "$TEST_TMP/ws/proj"
   make_sandbox sbx-a claude stopped "$TEST_TMP/ws/proj"
+  printf 'NAME\tAGENT\tSTATUS\tWORKSPACE\nsbx-a\tclaude\t○ stopped\t%s\n' \
+    "$TEST_TMP/ws/proj" >"$SBX_MOCK_STATE/ls-table"
   make_mcp_server fetch "$HTTP_JSON"
   run sbxmcp add sbx-a fetch
   assert_rc 0
   calls=$(mock_calls)
+  assert_contains "$calls" 'ls --format json'
   assert_contains "$calls" 'exec sbx-a true'
   assert_contains "$calls" 'stop sbx-a'
   assert_contains "$ERR" 'sbxmcp: temporarily starting sbx-a without launching the agent'
@@ -274,9 +277,12 @@ test_sbxmcp_running_sandbox_is_not_stopped() {
   setup_test_env
   mkdir -p "$TEST_TMP/ws/proj"
   make_sandbox sbx-a claude running "$TEST_TMP/ws/proj"
+  printf 'NAME\tAGENT\tSTATUS\tWORKSPACE\nsbx-a\tclaude\t● running\t%s\n' \
+    "$TEST_TMP/ws/proj" >"$SBX_MOCK_STATE/ls-table"
   make_mcp_server fetch "$HTTP_JSON"
   run sbxmcp add sbx-a fetch
   assert_rc 0
+  assert_contains "$(mock_calls)" 'ls --format json'
   assert_not_contains "$(mock_calls)" 'stop sbx-a'
   assert_eq 'running' "$(mock_sandbox_status sbx-a)"
 }

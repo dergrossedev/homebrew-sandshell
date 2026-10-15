@@ -75,7 +75,7 @@ sbxc -a opencode-ollama
 
 Run `<command> --help` for details.
 
-`sbxupdate [SANDBOX]` supports `vibe`, `opencode`, `opencode-ollama`, `claude`, and `codex`. `claude-ollama` updates remain unsupported.
+`sbxupdate [SANDBOX]` supports `vibe`, `opencode`, `opencode-ollama`, `claude`, `claude-ollama`, and `codex`.
 
 ## Agents
 

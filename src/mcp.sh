@@ -103,7 +103,7 @@ _sbx_mcp_attach() {
   }
   _sbx_mcp_confirm_local "$sandbox" "$server" "$details" || return
 
-  sandbox_status=$(_sbx_sandbox_field "$sandbox" 3) || return
+  sandbox_status=$(_sandshell_sandbox_status "$sandbox") || return
   agent=$(_sbx_sandbox_field "$sandbox" 2) || return
   _sandshell_sandbox_start sbxmcp "$sandbox" "$sandbox_status" || return
   [[ $sandbox_status == stopped ]] && started=1

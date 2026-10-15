@@ -138,13 +138,33 @@ do_exec() {
 }
 
 cmd_ls() {
-  local f
+  local f comma=''
   [ "${SBX_MOCK_LS_RC:-0}" -eq 0 ] || return "$SBX_MOCK_LS_RC"
+  if [ "${1:-}" = --format ] && [ "${2:-}" = json ] && [ $# -eq 2 ]; then
+    [ "${SBX_MOCK_LS_JSON_RC:-0}" -eq 0 ] || return "$SBX_MOCK_LS_JSON_RC"
+    if [ -f "$state/ls-response.json" ]; then
+      cat "$state/ls-response.json"
+      return
+    fi
+    printf '[\n'
+    for f in "$sandboxes"/*; do
+      [ -f "$f" ] || continue
+      printf '%s  {"name":"%s","id":"mock-id","agent":"%s","status":"%s"}' \
+        "$comma" "$(basename "$f")" "$(field "$f" agent)" "$(field "$f" status)"
+      comma=$',\n'
+    done
+    printf '\n]\n'
+    return
+  fi
   if [ "${1:-}" = "-q" ]; then
     for f in "$sandboxes"/*; do
       [ -f "$f" ] && basename "$f"
     done
     return 0
+  fi
+  if [ -f "$state/ls-table" ]; then
+    cat "$state/ls-table"
+    return
   fi
   printf 'NAME\tAGENT\tSTATUS\tWORKSPACE\n'
   for f in "$sandboxes"/*; do

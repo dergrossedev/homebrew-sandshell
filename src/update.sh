@@ -4,9 +4,10 @@
 # Read the native {"rules": [...]} response, using only direct rule fields.
 # Tokenize strings before delimiters so braces/escaped quotes in names cannot
 # mix rules or scopes. Unknown/malformed representations fail before any grant.
-# Print HOST or conflict:HOST for the two exact PyPI destinations.
-_sandshell_update_policy_resources() { # SANDBOX JSON
-  awk -v sandbox="sandbox:$1" '
+# Print HOST or conflict:HOST for the requested exact HTTPS destinations.
+_sandshell_update_policy_resources() { # SANDBOX JSON HOSTS (space-separated)
+  awk -v sandbox="sandbox:$1" -v resources="$3" '
+    BEGIN { split(resources, hosts, " ") }
     { json = json $0 "\n" }
     END {
       while (length(json)) {
@@ -18,7 +19,8 @@ _sandshell_update_policy_resources() { # SANDBOX JSON
           if (depth == 1 && token != "{") exit 2
           if (depth == 2 && key[1] == "rules" && token == "[") rules = 1
           if (depth == 3 && key[1] == "rules" && token == "{") {
-            scope = layer = type = decision = ""; tcp = pypi = files = 0
+            scope = layer = type = decision = ""; tcp = 0
+            for (host in matched) delete matched[host]
           }
         } else if (token == "}" || token == "]") {
           if (depth < 1 || (token == "}" && kind[depth] != "{") || (token == "]" && kind[depth] != "[")) exit 2
@@ -26,8 +28,7 @@ _sandshell_update_policy_resources() { # SANDBOX JSON
             if (scope == "" || layer == "" || type == "" || decision == "") exit 2
             if (scope == sandbox && layer == "local" && type == "network") {
               equivalent = (decision == "allow" && tcp)
-              if (pypi) { if (equivalent) allow["pypi.org"] = 1; else conflict["pypi.org"] = 1 }
-              if (files) { if (equivalent) allow["files.pythonhosted.org"] = 1; else conflict["files.pythonhosted.org"] = 1 }
+              for (host in matched) { if (equivalent) allow[host] = 1; else conflict[host] = 1 }
             }
           }
           depth--
@@ -50,8 +51,7 @@ _sandshell_update_policy_resources() { # SANDBOX JSON
             if (key[3] == "resources") {
               if (index(item, "\\")) exit 2
               item = tolower(item)
-              if (item == "pypi.org" || item == "pypi.org:443") pypi = 1
-              if (item == "files.pythonhosted.org" || item == "files.pythonhosted.org:443") files = 1
+              for (i in hosts) if (item == hosts[i] || item == hosts[i] ":443") matched[hosts[i]] = 1
             }
           }
         }
@@ -85,10 +85,13 @@ _sandshell_update_run() ( # SANDBOX AGENT STATUS
   # an explicit exit runs its EXIT trap, losing the cleanup state.
   local sandbox=$1 agent=$2 sandbox_status=$3 restore=0 interrupted=0
   local before after rc=0 listing policies resource existing line
-  local -a owned=() updater=()
+  local -a owned=() updater=() resources=()
   case $agent in
-    vibe) updater=(uv tool install --force mistral-vibe@latest --with 'httpx[socks]') ;;
+    vibe)
+      updater=(uv tool install --force mistral-vibe@latest --with 'httpx[socks]')
+      resources=(pypi.org files.pythonhosted.org) ;;
     opencode|opencode-ollama) updater=(opencode upgrade --method npm); agent=opencode ;;
+    claude-ollama) updater=(claude update); agent=claude; resources=(downloads.claude.ai) ;;
     claude|codex) updater=("$agent" update) ;;
   esac
 
@@ -109,18 +112,18 @@ _sandshell_update_run() ( # SANDBOX AGENT STATUS
   printf 'Before: %s\n' "$before"
   (( interrupted == 0 )) || return "$interrupted"
 
-  if [[ $agent == vibe ]]; then
+  if [[ -n ${resources[*]:-} ]]; then
     listing=$(sbx policy ls "$sandbox" --json --include-inactive) || {
       rc=$?
       printf 'sbxupdate: policy listing failed for %s\n' "$sandbox" >&2
       return "$rc"
     }
-    policies=$(_sandshell_update_policy_resources "$sandbox" "$listing") || {
+    policies=$(_sandshell_update_policy_resources "$sandbox" "$listing" "${resources[*]}") || {
       printf 'sbxupdate: cannot read network policy rules for %s\n' "$sandbox" >&2
       return 1
     }
     (( interrupted == 0 )) || return "$interrupted"
-    for resource in pypi.org files.pythonhosted.org; do
+    for resource in "${resources[@]}"; do
       existing=0
       while IFS= read -r line; do
         case $line in
@@ -163,7 +166,7 @@ sbxupdate() {
             'Usage: sbxupdate [SANDBOX]' \
             'Update the installed agent CLI in an existing sandbox.' \
             'Without SANDBOX, use the only sandbox matching the current physical workspace.' \
-            'Supports: vibe, opencode, opencode-ollama, claude, codex.' \
+            'Supports: vibe, opencode, opencode-ollama, claude, claude-ollama, codex.' \
             '  -h, --help  Show help'
           return 0 ;;
         -*) printf 'sbxupdate: unknown option: %s\n' "$1" >&2; return 2 ;;
@@ -202,12 +205,12 @@ sbxupdate() {
   # Exact known listing identities; never infer the agent from the sandbox name.
   case $agent in
     vibe|docker.io/docker/sbx-kit-vibe:latest) agent=vibe ;;
-    opencode|opencode-ollama|claude|codex) ;;
+    opencode|opencode-ollama|claude|claude-ollama|codex) ;;
     *)
       printf 'sbxupdate: unsupported update for agent %s in %s\n' "$agent" "$sandbox" >&2
       return 1 ;;
   esac
-  sandbox_status=$(_sbx_sandbox_field "$sandbox" 3 "$listing") || return
+  sandbox_status=$(_sandshell_sandbox_status "$sandbox") || return
   _sandshell_update_run "$sandbox" "$agent" "$sandbox_status" </dev/null || return
   printf 'Note: restart/resume any already-running agent session to use the installed CLI.\n'
 }
