@@ -84,13 +84,27 @@ test_update_listing_failure() {
 }
 
 test_update_vibe_dispatch() {
-  update_fixture docker.io/docker/sbx-kit-vibe:latest
-  run sbxupdate selected
-  assert_rc 0
-  assert_contains "$OUT" 'Updating vibe in selected'
-  assert_contains "$OUT" 'Before: Mistral Vibe v2.25.5'
-  assert_contains "$OUT" 'After:  Mistral Vibe v2.26.1'
-  assert_contains "$(mock_calls)" 'exec -u agent -w /tmp selected uv tool install --force mistral-vibe@latest --with httpx[socks]'
+  # Include the real Docker workload identifier as well as existing identities.
+  for agent in sbx-kit-vibe vibe docker.io/docker/sbx-kit-vibe:latest; do
+    update_fixture "$agent"
+    run sbxupdate selected
+    assert_rc 0
+    assert_contains "$OUT" 'Updating vibe in selected'
+    assert_contains "$OUT" 'Before: Mistral Vibe v2.25.5'
+    assert_contains "$OUT" 'After:  Mistral Vibe v2.26.1'
+    assert_eq 'ls
+ls --format json
+exec -u agent -w /tmp selected vibe --version
+policy ls selected --json --include-inactive
+policy allow network --sandbox selected pypi.org:443
+policy allow network --sandbox selected files.pythonhosted.org:443
+exec -u agent -w /tmp selected uv tool install --force mistral-vibe@latest --with httpx[socks]
+exec -u agent -w /tmp selected vibe --version
+policy rm network --sandbox selected --resource pypi.org:443 --force
+policy rm network --sandbox selected --resource files.pythonhosted.org:443 --force' "$(mock_calls)"
+    assert_eq '' "$(cat "$SBX_MOCK_STATE/policy/selected")"
+    assert_eq running "$(mock_sandbox_status selected)"
+  done
 }
 
 test_update_opencode_ollama_dispatch() {
@@ -236,12 +250,11 @@ test_update_claude_ollama_handled_interruption() {
 
 test_update_unverified_agents() {
   update_fixture
-  for agent in docker.io/sbx/claude-ollama:latest unknown something-vibe-custom; do
+  for agent in docker.io/sbx/claude-ollama:latest unknown something-vibe-custom sbx-kit-vibe-custom; do
     make_sandbox selected "$agent" stopped "$PWD"
     run sbxupdate selected
     assert_rc 1
-    assert_contains "$ERR" 'unsupported update'
-    assert_contains "$ERR" "$agent"
+    assert_eq "sbxupdate: unsupported update for agent $agent in selected" "$ERR"
     assert_not_contains "$(mock_calls)" 'exec '
     assert_not_contains "$(mock_calls)" 'policy '
   done

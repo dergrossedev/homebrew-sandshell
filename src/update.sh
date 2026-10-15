@@ -156,7 +156,7 @@ _sandshell_update_run() ( # SANDBOX AGENT STATUS
 )
 
 sbxupdate() {
-  local sandbox='' listing matches line agent sandbox_status count=0 rc
+  local sandbox='' listing matches line agent agent_family sandbox_status count=0 rc
   case $# in
     0) ;;
     1)
@@ -203,14 +203,15 @@ sbxupdate() {
     return 1
   fi
   # Exact known listing identities; never infer the agent from the sandbox name.
+  # Keep the raw identifier for diagnostics; dispatch using its agent family.
   case $agent in
-    vibe|docker.io/docker/sbx-kit-vibe:latest) agent=vibe ;;
-    opencode|opencode-ollama|claude|claude-ollama|codex) ;;
+    vibe|sbx-kit-vibe|docker.io/docker/sbx-kit-vibe:latest) agent_family=vibe ;;
+    opencode|opencode-ollama|claude|claude-ollama|codex) agent_family=$agent ;;
     *)
       printf 'sbxupdate: unsupported update for agent %s in %s\n' "$agent" "$sandbox" >&2
       return 1 ;;
   esac
   sandbox_status=$(_sandshell_sandbox_status "$sandbox") || return
-  _sandshell_update_run "$sandbox" "$agent" "$sandbox_status" </dev/null || return
+  _sandshell_update_run "$sandbox" "$agent_family" "$sandbox_status" </dev/null || return
   printf 'Note: restart/resume any already-running agent session to use the installed CLI.\n'
 }
