@@ -26,3 +26,9 @@
 - `sbxr` now matches canonical workspace paths, including aliases, trailing slashes, and macOS `/var`/`/private/var` paths
 - Homebrew installation and formula support are now available and validated
 - Future releases use `YYYY.M.PATCH` calendar versions
+
+## [2026.10.1] - 2026-10-15
+
+- Added `sbxupdate` for noninteractive agent CLI updates inside existing sandboxes
+- Supports Vibe, OpenCode, Claude, Codex, `opencode-ollama`, and `claude-ollama`
+- `sbxupdate` safely handles stopped sandboxes and temporary update network access while preserving existing sandbox state and policy rules
