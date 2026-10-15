@@ -13,6 +13,7 @@ test_sbxcmd_lists_all_public_commands() {
   assert_eq 'Docker Sandbox helpers:
   sbxc      Create and configure a new sandbox
   sbxr      List or resume existing sandboxes
+  sbxupdate Update the installed agent CLI in an existing sandbox
   sbxenv    Edit the current project environment file
   sbxmcp    List, attach, or copy MCP servers per sandbox
   sbxskill  Manage isolated skills per sandbox

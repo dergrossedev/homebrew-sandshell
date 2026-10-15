@@ -1,7 +1,7 @@
-#compdef sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd
+#compdef sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd
 
 # Zsh completion for sandshell (sbxc, sbxr, sbxenv, sbxmcp, sbxskill, sbxwt,
-# sbxcmd).
+# sbxupdate, sbxcmd).
 #
 # Install by placing this file on $fpath under the name _sandshell (for example
 # in a completion directory) BEFORE the shell's completion initialization
@@ -186,6 +186,13 @@ _sandshell() {
     return 0
   }
 
+  _sandshell_sbxupdate() {
+    _arguments \
+      '(-h --help)'{-h,--help}'[show help]' \
+      '1:sandbox:_sandshell_sandboxes'
+    return 0
+  }
+
   _sandshell_sbxmcp() {
     if (( CURRENT == 2 )); then
       _arguments \
@@ -315,6 +322,7 @@ _sandshell() {
   case $service in
     sbxc) _sandshell_sbxc ;;
     sbxr) _sandshell_sbxr ;;
+    sbxupdate) _sandshell_sbxupdate ;;
     sbxenv) _sandshell_sbxenv ;;
     sbxmcp) _sandshell_sbxmcp ;;
     sbxskill) _sandshell_sbxskill ;;

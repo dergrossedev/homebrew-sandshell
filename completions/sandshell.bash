@@ -1,5 +1,5 @@
 # Bash completion for sandshell (sbxc, sbxr, sbxenv, sbxmcp, sbxskill, sbxwt,
-# sbxcmd).
+# sbxupdate, sbxcmd).
 #
 # Load from .bashrc:
 #   source /path/to/sandshell/completions/sandshell.bash
@@ -251,6 +251,18 @@ _sandshell_sbxenv() {
   return 0
 }
 
+_sandshell_sbxupdate() {
+  local cur=${COMP_WORDS[COMP_CWORD]}
+  COMPREPLY=()
+  (( COMP_CWORD == 1 )) || return 0
+  if [[ $cur == -* ]]; then
+    _sandshell_complete_list "$cur" -h --help
+  else
+    _sandshell_complete_from "$cur" _sandshell_sandboxes
+  fi
+  return 0
+}
+
 _sandshell_sbxmcp() {
   local cur sub i
   local -a typed
@@ -429,6 +441,7 @@ _sandshell_sbxcmd() {
 
 complete -F _sandshell_sbxc sbxc
 complete -F _sandshell_sbxr sbxr
+complete -F _sandshell_sbxupdate sbxupdate
 complete -F _sandshell_sbxenv sbxenv
 complete -F _sandshell_sbxmcp sbxmcp
 complete -F _sandshell_sbxskill sbxskill

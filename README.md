@@ -66,6 +66,7 @@ sbxc -a opencode-ollama
 | --- | --- |
 | `sbxc` | Create a sandbox without launching the agent |
 | `sbxr` | List project/repository sandboxes or resume one |
+| `sbxupdate` | Update the installed agent CLI in an existing sandbox |
 | `sbxenv` | Edit the current project's environment file |
 | `sbxmcp` | List, attach, or copy MCP servers per sandbox |
 | `sbxskill` | Manage isolated skills per sandbox |

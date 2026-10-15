@@ -46,7 +46,7 @@ test_shell_compat_defines_all_public_commands() {
   for shell in bash zsh; do
     out=$($shell -c '
       . "$1"
-      for cmd in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd; do
+      for cmd in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd; do
         command -v "$cmd" >/dev/null 2>&1 || { printf "missing: %s\n" "$cmd"; exit 1; }
       done
     ' sh "$SANDSHELL_SH" 2>&1)

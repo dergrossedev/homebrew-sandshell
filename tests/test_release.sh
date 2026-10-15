@@ -39,6 +39,10 @@ copy_release_tree() {
   git -C "$1" init -q || assert_fail 'fixture git init failed'
   git -C "$1" config user.name 'Sandshell Test' || assert_fail 'fixture Git identity failed'
   git -C "$1" config user.email 'sandshell-test@example.com' || assert_fail 'fixture Git identity failed'
+  # Commits can launch detached maintenance that repacks .git after setup
+  # returns, racing the complete repository snapshots below.
+  git -C "$1" config maintenance.auto false || assert_fail 'fixture maintenance config failed'
+  git -C "$1" config gc.auto 0 || assert_fail 'fixture GC config failed'
   git -C "$1" add -A || assert_fail 'fixture git add failed'
   git -C "$1" commit -q -m "Initial commit" || assert_fail 'fixture baseline commit failed'
   assert_eq '' "$(git -C "$1" status --porcelain)" 'fixture baseline must be clean'
@@ -55,6 +59,16 @@ touch_file() {
 test_release_script_is_executable() {
   setup_test_env
   [ -x "$SANDSHELL_ROOT/scripts/release.sh" ] || assert_fail 'scripts/release.sh is not executable'
+}
+
+test_release_fixture_does_not_schedule_maintenance() {
+  setup_test_env
+  export GIT_TRACE="$TEST_TMP/git-trace"
+  copy_release_tree "$TEST_TMP/repo"
+  assert_file_exists "$GIT_TRACE"
+  # Check the actual Git child commands, without depending on GC thresholds
+  # or waiting for a background pack to race the repository fingerprint.
+  assert_not_contains "$(cat "$GIT_TRACE")" 'maintenance run --auto'
 }
 
 test_release_fixture_is_clean_and_copies_working_tree() {
@@ -288,6 +302,7 @@ test_release_packages_exactly_once() {
 
 run_tests \
   test_release_script_is_executable \
+  test_release_fixture_does_not_schedule_maintenance \
   test_release_fixture_is_clean_and_copies_working_tree \
   test_release_fixture_includes_formula_validation \
   test_release_rejects_missing_version \

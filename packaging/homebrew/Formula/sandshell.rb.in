@@ -33,7 +33,7 @@ class Sandshell < Formula
                          "command -v sbxc && command -v sbxr && " \
                          "command -v sbxenv && command -v sbxmcp && " \
                          "command -v sbxskill && command -v sbxwt && " \
-                         "command -v sbxcmd && sbxcmd"
+                         "command -v sbxupdate && command -v sbxcmd && sbxcmd"
     # The optional Vibe example is installed as a public data asset.
     assert_path_exists pkgshare/"examples/vibe.toml"
   end

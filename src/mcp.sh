@@ -105,16 +105,8 @@ _sbx_mcp_attach() {
 
   sandbox_status=$(_sbx_sandbox_field "$sandbox" 3) || return
   agent=$(_sbx_sandbox_field "$sandbox" 2) || return
-  case $sandbox_status in
-    running) ;;
-    stopped)
-      printf 'sbxmcp: temporarily starting %s without launching the agent\n' "$sandbox" >&2
-      sbx exec "$sandbox" true >/dev/null || return
-      started=1 ;;
-    *)
-      printf 'sbxmcp: sandbox is not in a usable state: %s (%s)\n' "$sandbox" "${sandbox_status:-unknown}" >&2
-      return 1 ;;
-  esac
+  _sandshell_sandbox_start sbxmcp "$sandbox" "$sandbox_status" || return
+  [[ $sandbox_status == stopped ]] && started=1
 
   case $agent in
     vibe|*vibe*)
@@ -137,8 +129,7 @@ _sbx_mcp_attach() {
   fi
 
   if (( started )); then
-    sbx stop "$sandbox" >/dev/null || {
-      printf 'sbxmcp: warning: failed to restore stopped state for %s\n' "$sandbox" >&2
+    _sandshell_sandbox_restore sbxmcp "$sandbox" || {
       (( rc == 0 )) && rc=1
     }
   fi

@@ -92,13 +92,13 @@ test_release_zsh_completion_discovers_all_commands() {
     autoload -U compinit
     compinit -i -D
     . "$1/sandshell.sh"
-    for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd; do
+    for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd; do
       printf "%s=%s\n" "$c" "${_comps[$c]:-none}"
     done
   ' _ "$RELEASE_DIR"
   assert_rc 0
   assert_eq '' "$ERR"
-  for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd; do
+  for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd; do
     assert_contains "$OUT" "$c=_sandshell" "command: $c"
   done
 }
@@ -190,7 +190,7 @@ test_release_bash_completion_from_extracted_archive() {
   run "$BASH_BIN" -c '
     . "$1/sandshell.sh"
     . "$1/completions/sandshell.bash"
-    complete -p sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd
+    complete -p sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd
     COMP_WORDS=(sbxc -a "")
     COMP_CWORD=2
     _sandshell_sbxc
@@ -207,7 +207,7 @@ test_release_bash_completion_from_extracted_archive() {
   ' _ "$RELEASE_DIR"
   assert_rc 0
   assert_eq '' "$ERR"
-  for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd; do
+  for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd; do
     assert_contains "$OUT" "complete -F _sandshell_$c $c" "command: $c"
   done
   assert_contains "$OUT" 'agents: claude codex opencode vibe claude-ollama opencode-ollama'

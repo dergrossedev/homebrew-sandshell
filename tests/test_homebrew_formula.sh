@@ -201,7 +201,7 @@ test_formula_test_block_logic_against_runtime() {
   # The formula's test block sources the installed runtime in Bash and
   # confirms the public helper functions exist. Run the same logic against
   # the repository artifact — the simpler boundary, without Homebrew.
-  run bash -c '. "$1" && command -v sbxc && command -v sbxr && command -v sbxenv && command -v sbxmcp && command -v sbxskill && command -v sbxwt && command -v sbxcmd && sbxcmd' sh "$SANDSHELL_SH"
+  run bash -c '. "$1" && command -v sbxc && command -v sbxr && command -v sbxenv && command -v sbxmcp && command -v sbxskill && command -v sbxwt && command -v sbxupdate && command -v sbxcmd && sbxcmd' sh "$SANDSHELL_SH"
   assert_rc 0
   assert_contains "$OUT" 'Docker Sandbox helpers:'
 }

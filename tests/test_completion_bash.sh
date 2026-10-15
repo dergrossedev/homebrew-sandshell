@@ -54,9 +54,10 @@ test_bash_syntax() {
 
 test_bash_source_is_silent_and_registers() {
   setup_test_env
-  reg=$("$BASH_BIN" -c '. "$1" && complete -p sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd' _ "$COMPLETIONS_BASH" 2>"$TEST_TMP/.comp-err")
+  reg=$("$BASH_BIN" -c '. "$1" && complete -p sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd' _ "$COMPLETIONS_BASH" 2>"$TEST_TMP/.comp-err")
   assert_contains "$reg" 'complete -F _sandshell_sbxc sbxc'
   assert_contains "$reg" 'complete -F _sandshell_sbxr sbxr'
+  assert_contains "$reg" 'complete -F _sandshell_sbxupdate sbxupdate'
   assert_contains "$reg" 'complete -F _sandshell_sbxenv sbxenv'
   assert_contains "$reg" 'complete -F _sandshell_sbxmcp sbxmcp'
   assert_contains "$reg" 'complete -F _sandshell_sbxskill sbxskill'
@@ -150,6 +151,30 @@ test_bash_sbxr_sandbox_names() {
 }
 
 # --- sbxenv -------------------------------------------------------------------
+
+test_bash_sbxupdate() {
+  setup_test_env
+  make_sandbox alpha vibe stopped "$TEST_TMP/ws"
+  make_sandbox beta opencode stopped "$TEST_TMP/ws"
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate -)
+  assert_comp '-h --help' "$out"
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate '')
+  assert_comp 'alpha beta' "$out"
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate al)
+  assert_comp 'alpha' "$out"
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate alpha '')
+  assert_comp '' "$out"
+  assert_eq 'ls -q
+ls -q' "$(mock_calls)"
+  export SBX_MOCK_LS_RC=7
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate '')
+  assert_comp '' "$out"
+  assert_eq '' "$(comp_err)"
+  hide_sbx
+  out=$(bash_complete _sandshell_sbxupdate sbxupdate '')
+  assert_comp '' "$out"
+  assert_eq '' "$(comp_err)"
+}
 
 test_bash_sbxenv() {
   setup_test_env
@@ -476,6 +501,7 @@ run_tests \
   test_bash_sbxc_name_value_has_no_completion \
   test_bash_sbxr_options \
   test_bash_sbxr_sandbox_names \
+  test_bash_sbxupdate \
   test_bash_sbxenv \
   test_bash_sbxmcp_subcommands \
   test_bash_sbxmcp_sandbox_arguments \

@@ -51,7 +51,8 @@ zsh_gen() {
         esac
       done
     }
-    service=sbxcmd
+    _arguments() { printf "%s\n" "$@"; }
+    service=${COMPLETION_SERVICE:-sbxcmd}
     _sandshell >/dev/null
     "$0" "$@"
   ' "$func" "$PATH" "$COMPLETIONS_ZSH" "$@" 2>"$TEST_TMP/.zgen-err"
@@ -77,13 +78,14 @@ test_zsh_registers_all_commands_via_compinit() {
     fpath=("$1" $fpath)
     autoload -U compinit
     compinit -i -D
-    for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxcmd; do
+    for c in sbxc sbxr sbxenv sbxmcp sbxskill sbxwt sbxupdate sbxcmd; do
       printf "%s=%s\n" "$c" "${_comps[$c]}"
     done
   ' _sandshell "$COMPLETIONS_DIR"
   assert_rc 0
   assert_contains "$OUT" 'sbxc=_sandshell'
   assert_contains "$OUT" 'sbxr=_sandshell'
+  assert_contains "$OUT" 'sbxupdate=_sandshell'
   assert_contains "$OUT" 'sbxenv=_sandshell'
   assert_contains "$OUT" 'sbxmcp=_sandshell'
   assert_contains "$OUT" 'sbxskill=_sandshell'
@@ -111,6 +113,22 @@ test_zsh_sandboxes() {
   assert_comp 'beta' "$out"
   # Dynamic candidates come from the mock sbx, never a real one.
   assert_contains "$(mock_calls)" 'ls -q'
+}
+
+test_zsh_sbxupdate() {
+  setup_test_env
+  out=$(zsh_gen _sandshell_sbxupdate)
+  assert_contains "$out" '(-h --help)-h[show help]'
+  assert_contains "$out" '(-h --help)--help[show help]'
+  assert_contains "$out" '1:sandbox:_sandshell_sandboxes'
+  assert_not_contains "$out" '--all'
+  assert_not_contains "$out" '2:'
+  assert_eq '' "$(zgen_err)"
+  assert_eq '' "$(mock_calls)"
+  export COMPLETION_SERVICE=sbxupdate
+  out=$(zsh_gen _sandshell)
+  assert_contains "$out" '1:sandbox:_sandshell_sandboxes'
+  assert_eq '' "$(zgen_err)"
 }
 
 test_zsh_mcp_servers() {
@@ -274,6 +292,7 @@ run_tests \
   test_zsh_registers_all_commands_via_compinit \
   test_zsh_file_does_not_run_compinit_or_zstyle \
   test_zsh_sandboxes \
+  test_zsh_sbxupdate \
   test_zsh_mcp_servers \
   test_zsh_skills_available \
   test_zsh_skills_tracked \

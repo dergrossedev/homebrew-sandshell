@@ -72,12 +72,13 @@ run_sandbox_script() { # NAME SCRIPT [ARGS...]
 }
 
 do_exec() {
-  local name script record
+  local name script record user='' workdir=''
   while [ $# -gt 0 ]; do
     case $1 in
       -i) shift ;;
-      -u) shift 2 ;;
-      -*) shift ;;
+      -u) user=$2; shift 2 ;;
+      -w) workdir=$2; shift 2 ;;
+      -*) printf 'mock sbx: unsupported exec flag: %s\n' "$1" >&2; exit 2 ;;
       *) break ;;
     esac
   done
@@ -90,19 +91,54 @@ do_exec() {
   fi
   if [ "${1:-}" = "true" ]; then
     setfield "$record" status running
-    exit 0
+    exit "${SBX_MOCK_START_RC:-0}"
   fi
+  case ${1:-} in
+    vibe|opencode|uv)
+      [ "$user" = agent ] && [ "$workdir" = /tmp ] && [ ! -t 0 ] && [ ! -t 1 ] || {
+        printf 'mock sbx: updater must use agent, /tmp, and no TTY\n' >&2
+        exit 2
+      }
+      if [ $# -eq 2 ] && [ "$2" = --version ] && { [ "$1" = vibe ] || [ "$1" = opencode ]; }; then
+        if [ -f "$state/updated-$name" ]; then
+          [ "${SBX_MOCK_VERSION_AFTER_RC:-0}" -eq 0 ] || exit "$SBX_MOCK_VERSION_AFTER_RC"
+          if [ "$1" = vibe ]; then
+            printf '%s\n' "${SBX_MOCK_VERSION_AFTER:-Mistral Vibe v2.26.1}"
+          else
+            printf '%s\n' "${SBX_MOCK_VERSION_AFTER:-1.2.0}"
+          fi
+        else
+          [ "${SBX_MOCK_VERSION_BEFORE_RC:-0}" -eq 0 ] || exit "$SBX_MOCK_VERSION_BEFORE_RC"
+          if [ "$1" = vibe ]; then
+            printf '%s\n' "${SBX_MOCK_VERSION_BEFORE:-Mistral Vibe v2.25.5}"
+          else
+            printf '%s\n' "${SBX_MOCK_VERSION_BEFORE:-1.1.0}"
+          fi
+        fi
+        exit 0
+      fi
+      if { [ $# -eq 4 ] && [ "$1" = opencode ] && [ "$2" = upgrade ] && [ "$3" = --method ] && [ "$4" = npm ]; } ||
+         { [ $# -eq 7 ] && [ "$1" = uv ] && [ "$2" = tool ] && [ "$3" = install ] && [ "$4" = --force ] &&
+           [ "$5" = mistral-vibe@latest ] && [ "$6" = --with ] && [ "$7" = 'httpx[socks]' ]; }; then
+        : >"$state/updated-$name"
+        if [ -n "${SBX_MOCK_UPDATE_SIGNAL:-}" ]; then kill -"$SBX_MOCK_UPDATE_SIGNAL" "$PPID"; fi
+        exit "${SBX_MOCK_UPDATE_RC:-0}"
+      fi
+      ;;
+  esac
   if [ "${1:-}" = "sh" ] && [ "${2:-}" = "-c" ]; then
     script=$3
     shift 3
     run_sandbox_script "$name" "$script" "$@"
     exit $?
   fi
-  exit 0
+  printf 'mock sbx: unsupported exec payload: %s\n' "$*" >&2
+  exit 2
 }
 
 cmd_ls() {
   local f
+  [ "${SBX_MOCK_LS_RC:-0}" -eq 0 ] || return "$SBX_MOCK_LS_RC"
   if [ "${1:-}" = "-q" ]; then
     for f in "$sandboxes"/*; do
       [ -f "$f" ] && basename "$f"
@@ -185,6 +221,7 @@ cmd_rm() {
 
 cmd_stop() {
   local name=${1:-} record
+  [ "${SBX_MOCK_STOP_RC:-0}" -eq 0 ] || return "$SBX_MOCK_STOP_RC"
   record="$sandboxes/$name"
   if [ ! -f "$record" ]; then
     printf 'mock sbx: no such sandbox: %s\n' "$name" >&2
@@ -254,6 +291,56 @@ cmd_skills() {
   esac
 }
 
+# Update-policy fixtures: one exact resource per sandbox-local TCP allow rule.
+# Other scopes/decisions can be injected as native JSON rules for ownership tests.
+cmd_policy() {
+  local sub=${1:-} sandbox resource tmp
+  shift || true
+  mkdir -p "$state/policy"
+  case $sub in
+    ls)
+      [ "${SBX_MOCK_POLICY_LS_RC:-0}" -eq 0 ] || return "$SBX_MOCK_POLICY_LS_RC"
+      sandbox=$1
+      shift
+      [ "${1:-}" = --json ] && [ "${2:-}" = --include-inactive ] && [ $# -eq 2 ] || return 2
+      if [ -f "$state/policy-response.json" ]; then
+        cat "$state/policy-response.json"
+        return 0
+      fi
+      # Same direct rule fields as the observed sbx policy ls JSON contract.
+      printf '{"rules":[{"scope":"global","layer":"local","resource_type":"network","decision":"allow","resources":["pypi.org:443","files.pythonhosted.org:443"],"actions":["net:connect:tcp"]}'
+      if [ -f "$state/policy/$sandbox" ]; then
+        while IFS= read -r resource; do
+          [ -n "$resource" ] || continue
+          printf ',{"scope":"sandbox:%s","origin":"scoped","layer":"local","resource_type":"network","decision":"allow","resources":["%s"],"actions":["net:connect:tcp"],"editable":true,"provenance":{"created_via":"added"}}' "$sandbox" "$resource"
+        done <"$state/policy/$sandbox"
+      fi
+      printf ']}\n'
+      return 0 ;;
+    allow|rm)
+      [ "${1:-}" = network ] || return 2
+      [ "${2:-}" = --sandbox ] || return 2
+      sandbox=$3
+      shift 3
+      if [ "$sub" = allow ]; then
+        [ $# -eq 1 ] || return 2
+        resource=$1
+        [ "$resource" != "${SBX_MOCK_POLICY_ALLOW_FAIL:-}" ] || return 1
+        printf '%s\n' "$resource" >>"$state/policy/$sandbox"
+        if [ "$resource" = "${SBX_MOCK_POLICY_ALLOW_SIGNAL:-}" ]; then kill -TERM "$PPID"; fi
+      else
+        [ $# -eq 3 ] && [ "$1" = --resource ] && [ "$3" = --force ] || return 2
+        resource=$2
+        [ "$resource" != "${SBX_MOCK_POLICY_RM_FAIL:-}" ] || return 1
+        tmp=$(mktemp)
+        awk -v resource="$resource" '$0 != resource' "$state/policy/$sandbox" >"$tmp"
+        mv "$tmp" "$state/policy/$sandbox"
+      fi
+      return 0 ;;
+    *) printf 'mock sbx: unsupported policy command: %s\n' "$sub" >&2; return 2 ;;
+  esac
+}
+
 cmd=${1:-}
 shift || true
 case $cmd in
@@ -265,6 +352,7 @@ case $cmd in
   exec) do_exec "$@" ;;
   mcp) cmd_mcp "$@" ;;
   skills) cmd_skills "$@" ;;
+  policy) cmd_policy "$@" ;;
   *)
     printf 'mock sbx: unsupported command: %s\n' "$cmd" >&2
     exit 2

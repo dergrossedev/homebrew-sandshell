@@ -42,8 +42,37 @@ _sbx_sandbox_uses_workspace() {
 
 # _sbx_sandbox_field — print one column of `sbx ls` for NAME.
 _sbx_sandbox_field() {
-  local name=$1 column=$2
-  sbx ls | awk -v name="$name" -v column="$column" 'NR > 1 && $1 == name { print $column; exit }'
+  local name=$1 column=$2 listing
+  if (( $# == 3 )); then
+    listing=$3
+  else
+    listing=$(sbx ls) || return
+  fi
+  awk -v name="$name" -v column="$column" 'NR > 1 && $1 == name { print $column; exit }' <<< "$listing"
+}
+
+# Shared exec lifecycle: start a stopped sandbox without launching its agent.
+# Optional exec flags let callers choose the user and working directory.
+_sandshell_sandbox_start() { # CMD SANDBOX STATUS [EXEC_FLAGS...]
+  local cmd=$1 sandbox=$2 sandbox_status=$3
+  shift 3
+  case $sandbox_status in
+    running) ;;
+    stopped)
+      printf '%s: temporarily starting %s without launching the agent\n' "$cmd" "$sandbox" >&2
+      sbx exec "$@" "$sandbox" true >/dev/null || return
+      ;;
+    *)
+      printf '%s: sandbox is not in a usable state: %s (%s)\n' "$cmd" "$sandbox" "${sandbox_status:-unknown}" >&2
+      return 1 ;;
+  esac
+}
+
+_sandshell_sandbox_restore() { # CMD SANDBOX
+  sbx stop "$2" >/dev/null || {
+    printf '%s: warning: failed to restore stopped state for %s\n' "$1" "$2" >&2
+    return 1
+  }
 }
 
 # _sbx_sandbox_exists — true when NAME is a known sandbox.

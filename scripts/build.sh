@@ -36,7 +36,7 @@ esac
 
 # Explicit module order. The artifact is a single sourced file, so this order
 # is for readability; dependencies flow top-down.
-set -- core.sh sandbox.sh mcp.sh skills.sh worktree.sh commands.sh
+set -- core.sh sandbox.sh mcp.sh skills.sh worktree.sh update.sh commands.sh
 
 # Fail fast on missing source modules.
 for module in "$@"; do
