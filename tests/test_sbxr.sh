@@ -261,6 +261,127 @@ test_sbxr_workspace_trailing_slashes() {
   assert_sbxr_listing_from "$workspace" "$expected"
 }
 
+test_sbxr_workspace_rows_lists_every_matching_sandbox() {
+  setup_test_env
+  local workspace
+  workspace="$TEST_TMP/ws/multi project"
+  mkdir -p "$workspace" "$TEST_TMP/ws/other"
+  make_sandbox sbx-one claude running "$workspace"
+  make_sandbox sbx-two codex stopped "$workspace"
+  make_sandbox sbx-three claude running "$TEST_TMP/ws/other"
+  # The matched-name list reaches awk through -v, whose values are lexed as
+  # string constants: macOS awk rejects raw newlines in them, so every
+  # matching sandbox must survive the row filter.
+  run _sbx_workspace_rows "$workspace" "$(sbx ls)"
+  assert_rc 0
+  assert_contains "$OUT" 'sbx-one'
+  assert_contains "$OUT" 'sbx-two'
+  assert_not_contains "$OUT" 'sbx-three'
+}
+
+# write_current_cli_table ROW... — replace `sbx ls` table output with the
+# current Docker CLI shape: SANDBOX, AGENT, STATUS, PORTS, WORKSPACE, and
+# CREATED columns, with two-word decorated status cells.
+write_current_cli_table() {
+  {
+    printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\n'
+    printf '%b\n' "$@"
+  } >"$SBX_MOCK_STATE/ls-table"
+}
+
+test_sbxr_matches_workspaces_in_current_cli_table() {
+  setup_test_env
+  local workspace expected
+  workspace="$TEST_TMP/ws/current project"
+  mkdir -p "$workspace" "$TEST_TMP/ws/other"
+  make_sandbox sbx-running claude running "$workspace"
+  make_sandbox sbx-stopped codex stopped "$workspace"
+  make_sandbox sbx-unrelated claude running "$TEST_TMP/ws/other"
+  write_current_cli_table \
+    "sbx-running\tclaude\t● running\t127.0.0.1:8080->3000/tcp4\t$workspace\t2m" \
+    "sbx-stopped\tcodex\t○ stopped\t-\t$workspace\t3h" \
+    "sbx-unrelated\tclaude\t● running\t-\t$TEST_TMP/ws/other\t1m"
+  expected=$(printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\nsbx-running\tclaude\t● running\t127.0.0.1:8080->3000/tcp4\t%s\t2m\nsbx-stopped\tcodex\t○ stopped\t-\t%s\t3h\n' "$workspace" "$workspace")
+  assert_sbxr_listing_from "$workspace" "$expected"
+  assert_sbxr_listing_from "$TEST_TMP/ws/other" \
+    "$(printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\nsbx-unrelated\tclaude\t● running\t-\t%s\t1m\n' "$TEST_TMP/ws/other")"
+}
+
+test_sbxr_matches_structured_json_workspaces() {
+  setup_test_env
+  local workspace other expected
+  workspace="$TEST_TMP/ws/json project"
+  other="$TEST_TMP/ws/other project"
+  mkdir -p "$workspace" "$other"
+  make_sandbox sbx-multi claude running "$workspace"
+  make_sandbox sbx-readonly codex stopped "$workspace"
+  make_sandbox sbx-unrelated claude running "$other"
+  # Structured workspaces are the source of truth: the table abbreviates the
+  # workspace cell, a sandbox can list several workspaces, and a read-only
+  # workspace carries a :ro suffix.
+  cat >"$SBX_MOCK_STATE/ls-response.json" <<JSON
+[
+  {"name":"sbx-multi","id":"id-a","agent":"claude","status":"running",
+   "workspaces":["$other","$workspace"]},
+  {"name":"sbx-readonly","id":"id-b","agent":"codex","status":"stopped",
+   "workspaces":["${workspace}:ro"]},
+  {"name":"sbx-unrelated","id":"id-c","agent":"claude","status":"running",
+   "workspaces":["$other"]}
+]
+JSON
+  write_current_cli_table \
+    "sbx-multi\tclaude\t● running\t-\t…/json project\t2m" \
+    "sbx-readonly\tcodex\t○ stopped\t-\t…/json project\t3h" \
+    "sbx-unrelated\tclaude\t● running\t-\t…/other project\t1m"
+  expected=$(printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\nsbx-multi\tclaude\t● running\t-\t…/json project\t2m\nsbx-readonly\tcodex\t○ stopped\t-\t…/json project\t3h\n')
+  assert_sbxr_listing_from "$workspace" "$expected"
+  expected=$(printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\nsbx-multi\tclaude\t● running\t-\t…/json project\t2m\nsbx-unrelated\tclaude\t● running\t-\t…/other project\t1m\n')
+  assert_sbxr_listing_from "$other" "$expected"
+}
+
+test_sbxr_rejects_unparsable_workspace_json() {
+  setup_test_env
+  local workspace
+  workspace="$TEST_TMP/ws/proj"
+  mkdir -p "$workspace"
+  make_sandbox sbx-a claude running "$workspace"
+  printf '[{"name":"sbx-a","workspaces":["%s"}]\n' "$workspace" >"$SBX_MOCK_STATE/ls-response.json"
+  cd "$workspace" || exit 1
+  run sbxr
+  assert_rc 2
+  assert_contains "$ERR" 'sandshell: cannot read sandbox workspaces'
+}
+
+test_sbxr_resume_rejects_unparsable_workspace_json() {
+  setup_test_env
+  local workspace
+  workspace="$TEST_TMP/ws/proj"
+  mkdir -p "$workspace"
+  make_sandbox sbx-a claude stopped "$workspace"
+  printf '[{"name":"sbx-a","workspaces":["%s"}]\n' "$workspace" >"$SBX_MOCK_STATE/ls-response.json"
+  cd "$workspace" || exit 1
+  run sbxr sbx-a
+  assert_rc 2
+  assert_contains "$ERR" 'sandshell: cannot read sandbox workspaces'
+  assert_not_contains "$(mock_calls)" 'run --name sbx-a'
+}
+
+test_sbxr_resume_in_worktree_rejects_unparsable_workspace_json() {
+  setup_test_env
+  local repository worktree
+  repository="$TEST_TMP/repos/myrepo"
+  worktree="$TEST_TMP/repos/myrepo.worktrees/feature"
+  make_git_repo "$repository"
+  git -C "$repository" worktree add -b feature "$worktree" >/dev/null 2>&1
+  make_sandbox sbx-feature claude stopped "$worktree"
+  printf '[{"name":"sbx-feature","workspaces":["%s"}]\n' "$worktree" >"$SBX_MOCK_STATE/ls-response.json"
+  cd "$worktree" || exit 1
+  run sbxr sbx-feature
+  assert_rc 2
+  assert_contains "$ERR" 'sandshell: cannot read sandbox workspaces'
+  assert_not_contains "$(mock_calls)" 'run --name sbx-feature'
+}
+
 test_sbxr_repository_symlink_spellings() {
   setup_test_env
   local repository worktree alias expected
@@ -707,6 +828,12 @@ run_tests \
   test_sbxr_space_paths \
   test_sbxr_workspace_symlink_spellings \
   test_sbxr_workspace_trailing_slashes \
+  test_sbxr_workspace_rows_lists_every_matching_sandbox \
+  test_sbxr_matches_workspaces_in_current_cli_table \
+  test_sbxr_matches_structured_json_workspaces \
+  test_sbxr_rejects_unparsable_workspace_json \
+  test_sbxr_resume_rejects_unparsable_workspace_json \
+  test_sbxr_resume_in_worktree_rejects_unparsable_workspace_json \
   test_sbxr_repository_symlink_spellings \
   test_sbxr_repository_trailing_slashes \
   test_sbxr_unavailable_worktree_keeps_literal_matching \

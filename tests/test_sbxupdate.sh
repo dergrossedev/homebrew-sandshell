@@ -69,6 +69,22 @@ test_update_workspace_selection() {
   assert_contains "$ERR" 'specify SANDBOX'
 }
 
+test_update_workspace_selection_current_cli_table() {
+  update_fixture opencode stopped
+  make_sandbox unrelated vibe running "$TEST_TMP/unrelated"
+  # Current Docker CLI table shape: workspace selection must not depend on
+  # positional parsing of the decorated status cells.
+  printf 'SANDBOX\tAGENT\tSTATUS\tPORTS\tWORKSPACE\tCREATED\nunrelated\tvibe\t● running\t-\t%s\t1m\nselected\topencode\t○ stopped\t-\t%s\t2m\n' \
+    "$TEST_TMP/unrelated" "$PWD" >"$SBX_MOCK_STATE/ls-table"
+  run sbxupdate
+  assert_rc 0
+  assert_contains "$OUT" 'Updating opencode in selected'
+  assert_contains "$(mock_calls)" 'exec -u agent -w /tmp selected true'
+  assert_contains "$(mock_calls)" 'selected opencode upgrade --method npm'
+  assert_contains "$(mock_calls)" 'stop selected'
+  assert_not_contains "$(mock_calls)" 'exec -u agent -w /tmp unrelated'
+}
+
 test_update_listing_failure() {
   update_fixture
   export SBX_MOCK_LS_RC=7
@@ -625,6 +641,7 @@ run_tests \
   test_update_help_usage \
   test_update_explicit_selection \
   test_update_workspace_selection \
+  test_update_workspace_selection_current_cli_table \
   test_update_listing_failure \
   test_update_vibe_dispatch \
   test_update_opencode_ollama_dispatch \

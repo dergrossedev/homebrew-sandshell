@@ -149,8 +149,8 @@ cmd_ls() {
     printf '[\n'
     for f in "$sandboxes"/*; do
       [ -f "$f" ] || continue
-      printf '%s  {"name":"%s","id":"mock-id","agent":"%s","status":"%s"}' \
-        "$comma" "$(basename "$f")" "$(field "$f" agent)" "$(field "$f" status)"
+      printf '%s  {"name":"%s","id":"mock-id","agent":"%s","status":"%s","workspaces":["%s"]}' \
+        "$comma" "$(basename "$f")" "$(field "$f" agent)" "$(field "$f" status)" "$(field "$f" workspace)"
       comma=$',\n'
     done
     printf '\n]\n'

@@ -84,41 +84,97 @@ _sbx_confirm() {
 # Sandbox lifecycle and environment: sbxc, sbxr, sbxenv, agent/kit mapping,
 # Vibe setup, and the sandbox lookup helpers shared across commands.
 
-# _sbx_workspace_rows — print `sbx ls` rows whose WORKSPACE column matches.
+# _sbx_json_workspaces — print "name<TAB>workspace" for every workspace of
+# every sandbox in the `sbx ls --format json` listing read from stdin. The
+# current schema is a bare array of objects with a string "name" and a
+# "workspaces" string array; unknown fields are ignored.
+_sbx_json_workspaces() {
+  awk '
+    { json = json $0 "\n" }
+    END {
+      while (length(json)) {
+        if (match(json, /^[[:space:]]+/)) { json = substr(json, RLENGTH + 1); continue }
+        if (!match(json, /^(\"([^\"\\]|\\.)*\"|[][{}:,]|true|false|null|-?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?)/)) exit 2
+        token = substr(json, 1, RLENGTH); json = substr(json, RLENGTH + 1)
+        if (token == "{" || token == "[") {
+          depth++; kind[depth] = token; value[depth] = 0
+          if (depth == 1) { if (token != "[" || array++) exit 2 }
+          if (depth == 2) { if (token != "{") exit 2; name = workspaces = "" }
+        } else if (token == "}" || token == "]") {
+          if (depth < 1 || (token == "}" && kind[depth] != "{") || (token == "]" && kind[depth] != "[")) exit 2
+          if (token == "}" && depth == 2 && name != "" && workspaces != "") {
+            count = split(workspaces, entry, "\n")
+            for (i = 1; i < count; i++) printf "%s\t%s\n", name, entry[i]
+          }
+          depth--
+        } else if (token == ":") {
+          value[depth] = 1
+        } else if (token == ",") {
+          value[depth] = 0
+        } else if (substr(token, 1, 1) == "\"") {
+          item = substr(token, 2, length(token) - 2)
+          if (kind[depth] == "{" && !value[depth]) key[depth] = item
+          else if (depth == 2 && key[2] == "name") name = item
+          else if (depth == 3 && kind[3] == "[" && key[2] == "workspaces") workspaces = workspaces item "\n"
+        }
+      }
+      if (depth || !array) exit 2
+    }
+  '
+}
+
+# _sbx_workspace_rows — print `sbx ls` rows whose sandbox uses WORKSPACE.
+# Workspaces come from the structured `sbx ls --format json` listing; the
+# human-readable table gains columns and decorated status cells across sbx
+# releases, so its layout must not drive matching. Returns 2 when the
+# structured listing cannot be parsed, so callers can tell a read failure
+# from an empty match.
 _sbx_workspace_rows() {
-  local workspace listing line row_workspace column
+  local workspace listing json pairs name candidate names=''
   workspace=$(_sandshell_physical_path "$1") || return
   if (( $# == 2 )); then
     listing=$2
   else
     listing=$(sbx ls) || return
   fi
-  while IFS= read -r line; do
-    # The first three columns are single fields; WORKSPACE is the remainder,
-    # including spaces. Keep the original row for display.
-    row_workspace=$line
-    for (( column=0; column<3; column++ )); do
-      row_workspace=${row_workspace#*[[:space:]]}
-      row_workspace=${row_workspace#"${row_workspace%%[![:space:]]*}"}
-    done
-    [[ -n $row_workspace ]] || continue
-    [[ $(_sandshell_physical_path "$row_workspace") == "$workspace" ]] && printf '%s\n' "$line"
-  done <<< "$listing"
+  json=$(sbx ls --format json) || return
+  pairs=$(_sbx_json_workspaces <<< "$json") || {
+    printf 'sandshell: cannot read sandbox workspaces\n' >&2
+    return 2
+  }
+  while IFS=$'\t' read -r name candidate; do
+    [[ -n $name ]] || continue
+    candidate=${candidate%:ro}
+    # The name list reaches awk through -v, whose values are lexed as string
+    # constants: macOS awk rejects raw newlines in them, so the separator
+    # travels as an escape sequence and awk expands it back to a newline.
+    [[ $(_sandshell_physical_path "$candidate") == "$workspace" ]] && names+="$name"'\n'
+  done <<< "$pairs"
+  [[ -n $names ]] || return 0
+  awk -v names="$names" '
+    BEGIN {
+      count = split(names, listed, "\n")
+      for (i = 1; i <= count; i++) if (listed[i] != "") matching[listed[i]] = 1
+    }
+    $1 in matching { print }
+  ' <<< "$listing"
   return 0
 }
 
 # _sbx_sandbox_uses_workspace — true when NAME is listed for WORKSPACE.
+# Returns 2 when the structured listing cannot be read.
 _sbx_sandbox_uses_workspace() {
-  local name=$1 workspace=$2 listing line first
+  local name=$1 workspace=$2 listing rows line first
   if (( $# == 3 )); then
     listing=$3
   else
     listing=$(sbx ls) || return
   fi
+  rows=$(_sbx_workspace_rows "$workspace" "$listing") || return
   while IFS= read -r line; do
     first=${line%%[[:space:]]*}
     [[ $first == "$name" ]] && return 0
-  done < <(_sbx_workspace_rows "$workspace" "$listing")
+  done <<< "$rows"
   return 1
 }
 
@@ -586,7 +642,7 @@ sbxc() {
 # Resume a named sandbox; stored environment values persist unless overridden.
 sbxr() {
   local name='' env_file='' env_explicit=0 all=0 existing names found=0 workspace rows listing header
-  local project candidate wt_path branch match main_worktree repo_match=0 agent
+  local project candidate wt_path branch match main_worktree repo_match=0 agent uses_workspace
   local meta meta_rc preset meta_model
   local -a args
 
@@ -701,14 +757,25 @@ sbxr() {
       # The branch column is intentionally ignored; only the worktree path is used.
       # shellcheck disable=SC2034
       while IFS=$'\t' read -r wt_path branch; do
-        if _sbx_sandbox_uses_workspace "$name" "$wt_path" "$listing"; then
+        _sbx_sandbox_uses_workspace "$name" "$wt_path" "$listing"
+        uses_workspace=$?
+        if (( uses_workspace == 0 )); then
           repo_match=1
           break
+        elif (( uses_workspace > 1 )); then
+          # An unreadable listing must not silently skip the project env.
+          return "$uses_workspace"
         fi
       done < <(_sbx_git_worktrees "$workspace")
-    elif _sbx_sandbox_uses_workspace "$name" "$workspace" "$listing"; then
-      repo_match=1
-      main_worktree=$workspace
+    else
+      _sbx_sandbox_uses_workspace "$name" "$workspace" "$listing"
+      uses_workspace=$?
+      if (( uses_workspace == 0 )); then
+        repo_match=1
+        main_worktree=$workspace
+      elif (( uses_workspace > 1 )); then
+        return "$uses_workspace"
+      fi
     fi
     if (( repo_match )); then
       project=$(_sbx_project_name "${main_worktree:-$workspace}") || return
