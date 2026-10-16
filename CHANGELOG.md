@@ -32,3 +32,9 @@
 - Added `sbxupdate` for noninteractive agent CLI updates inside existing sandboxes
 - Supports Vibe, OpenCode, Claude, Codex, `opencode-ollama`, and `claude-ollama`
 - `sbxupdate` safely handles stopped sandboxes and temporary update network access while preserving existing sandbox state and policy rules
+
+## [2026.10.2] - 2026-10-16
+
+- Fixed `sbxr` workspace matching with structured Docker sandbox metadata
+- Fixed macOS AWK compatibility
+- Preserved workspace matching for `sbxupdate`, Git worktrees, and project environment selection
